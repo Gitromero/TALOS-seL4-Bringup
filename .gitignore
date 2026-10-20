@@ -1,0 +1,17 @@
+# Build outputs and local checkouts never belong in this repository.
+build-*/
+cbuild/
+.repo/
+*.wic
+*.wic.gz
+*.wic.xz
+*.img
+*.tar.gz
+# Editor/OS noise
+*~
+*.swp
+.DS_Store
+Thumbs.db
+.vscode/
+# Release assets (corresponding-source archive) are generated, not committed.
+dist/

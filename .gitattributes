@@ -1,0 +1,13 @@
+# Verified and experimental binaries: never apply line-ending or text conversions.
+*.uImage  binary
+*.scr     binary
+*.dtb     binary
+# Checksum files must stay LF so sha256sum and the installer parse them identically
+# on every platform (the installer also tolerates CRLF, but do not rely on it).
+SHA256SUMS text eol=lf
+# Patches must keep exact bytes, including intentional trailing whitespace;
+# -whitespace stops git from flagging or "fixing" it.
+*.patch   -text -whitespace
+# U-Boot script sources: LF only, so rebuilding them reproduces the .scr files.
+*.cmd     text eol=lf
+*.sh      text eol=lf

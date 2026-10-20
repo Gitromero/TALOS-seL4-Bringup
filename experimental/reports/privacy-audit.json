@@ -1,0 +1,308 @@
+{
+  "tool": "privacy_audit.py",
+  "results": [
+    {
+      "file": "sel4-experimental.uImage",
+      "size": 3021688,
+      "checks": {
+        "toolchain_paths": {
+          "count": 1,
+          "examples": [
+            "/build/reproducible-path/gcc-riscv64-unknown-elf-19/build/riscv64-unknown-elf/libgcc"
+          ]
+        },
+        "absolute_path": {
+          "count": 0,
+          "examples": []
+        },
+        "email": {
+          "count": 0,
+          "examples": []
+        },
+        "ipv4": {
+          "count": 0,
+          "examples": []
+        },
+        "mac_text": {
+          "count": 0,
+          "examples": []
+        },
+        "secret_like": {
+          "count": 1,
+          "examples": [
+            "token"
+          ]
+        },
+        "<user>": {
+          "count": 0
+        },
+        "<home>": {
+          "count": 0
+        },
+        "<hostname>": {
+          "count": 0
+        }
+      },
+      "fdts": [
+        {
+          "offset": "0x20f98",
+          "size": 22935,
+          "valid": true,
+          "model": "Microchip PolarFire-SoC Discovery Kit",
+          "mac_addresses": [
+            "00 00 00 00 00 00",
+            "00 00 00 00 00 00"
+          ],
+          "nonzero_macs": [],
+          "unique_id_properties": [
+            "mac-address"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "boot-auto.scr",
+      "size": 2692,
+      "checks": {
+        "toolchain_paths": {
+          "count": 0,
+          "examples": []
+        },
+        "absolute_path": {
+          "count": 0,
+          "examples": []
+        },
+        "email": {
+          "count": 0,
+          "examples": []
+        },
+        "ipv4": {
+          "count": 0,
+          "examples": []
+        },
+        "mac_text": {
+          "count": 0,
+          "examples": []
+        },
+        "secret_like": {
+          "count": 0,
+          "examples": []
+        },
+        "<user>": {
+          "count": 0
+        },
+        "<home>": {
+          "count": 0
+        },
+        "<hostname>": {
+          "count": 0
+        }
+      },
+      "fdts": []
+    },
+    {
+      "file": "sel4.uImage",
+      "size": 3057528,
+      "checks": {
+        "toolchain_paths": {
+          "count": 1,
+          "examples": [
+            "/build/reproducible-path/gcc-riscv64-unknown-elf-19/build/riscv64-unknown-elf/libgcc"
+          ]
+        },
+        "absolute_path": {
+          "count": 253,
+          "examples": [
+            "<home>/...",
+            "<home>/...",
+            "<home>/...",
+            "<home>/...",
+            "<home>/..."
+          ]
+        },
+        "email": {
+          "count": 0,
+          "examples": []
+        },
+        "ipv4": {
+          "count": 0,
+          "examples": []
+        },
+        "mac_text": {
+          "count": 0,
+          "examples": []
+        },
+        "secret_like": {
+          "count": 1,
+          "examples": [
+            "token"
+          ]
+        },
+        "<user>": {
+          "count": 594
+        },
+        "<home>": {
+          "count": 594
+        },
+        "<hostname>": {
+          "count": 0
+        }
+      },
+      "fdts": [
+        {
+          "offset": "0x21678",
+          "size": 22935,
+          "valid": true,
+          "model": "Microchip PolarFire-SoC Discovery Kit",
+          "mac_addresses": [
+            "00 04 a3 6d f8 11",
+            "00 00 00 00 00 00"
+          ],
+          "nonzero_macs": [
+            "00 04 a3 6d f8 11"
+          ],
+          "unique_id_properties": [
+            "mac-address"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "boot-sel4.scr",
+      "size": 324,
+      "checks": {
+        "toolchain_paths": {
+          "count": 0,
+          "examples": []
+        },
+        "absolute_path": {
+          "count": 0,
+          "examples": []
+        },
+        "email": {
+          "count": 0,
+          "examples": []
+        },
+        "ipv4": {
+          "count": 0,
+          "examples": []
+        },
+        "mac_text": {
+          "count": 0,
+          "examples": []
+        },
+        "secret_like": {
+          "count": 0,
+          "examples": []
+        },
+        "<user>": {
+          "count": 0
+        },
+        "<home>": {
+          "count": 0
+        },
+        "<hostname>": {
+          "count": 0
+        }
+      },
+      "fdts": []
+    },
+    {
+      "file": "boot-linux.scr",
+      "size": 291,
+      "checks": {
+        "toolchain_paths": {
+          "count": 0,
+          "examples": []
+        },
+        "absolute_path": {
+          "count": 0,
+          "examples": []
+        },
+        "email": {
+          "count": 0,
+          "examples": []
+        },
+        "ipv4": {
+          "count": 0,
+          "examples": []
+        },
+        "mac_text": {
+          "count": 0,
+          "examples": []
+        },
+        "secret_like": {
+          "count": 0,
+          "examples": []
+        },
+        "<user>": {
+          "count": 0
+        },
+        "<home>": {
+          "count": 0
+        },
+        "<hostname>": {
+          "count": 0
+        }
+      },
+      "fdts": []
+    },
+    {
+      "file": "discovery.dtb",
+      "size": 24576,
+      "checks": {
+        "toolchain_paths": {
+          "count": 0,
+          "examples": []
+        },
+        "absolute_path": {
+          "count": 0,
+          "examples": []
+        },
+        "email": {
+          "count": 0,
+          "examples": []
+        },
+        "ipv4": {
+          "count": 0,
+          "examples": []
+        },
+        "mac_text": {
+          "count": 0,
+          "examples": []
+        },
+        "secret_like": {
+          "count": 0,
+          "examples": []
+        },
+        "<user>": {
+          "count": 0
+        },
+        "<home>": {
+          "count": 0
+        },
+        "<hostname>": {
+          "count": 0
+        }
+      },
+      "fdts": [
+        {
+          "offset": "0x0",
+          "size": 24576,
+          "valid": true,
+          "model": "Microchip PolarFire-SoC Discovery Kit",
+          "mac_addresses": [
+            "00 04 a3 6d f8 11",
+            "00 00 00 00 00 00"
+          ],
+          "nonzero_macs": [
+            "00 04 a3 6d f8 11"
+          ],
+          "unique_id_properties": [
+            "mac-address"
+          ]
+        }
+      ]
+    }
+  ]
+}

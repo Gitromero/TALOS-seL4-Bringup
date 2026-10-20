@@ -1,0 +1,14 @@
+diff --git a/apps/sel4test-driver/src/main.c b/apps/sel4test-driver/src/main.c
+index b540758..3661ed9 100644
+--- a/apps/sel4test-driver/src/main.c
++++ b/apps/sel4test-driver/src/main.c
+@@ -598,7 +598,8 @@ int main(void)
+ {
+     /* Set exit handler */
+     sel4runtime_set_exit(sel4test_exit);
+-
++    printf("\nTALOS: root task reached seL4 user space\n");
++    
+     int error;
+     seL4_BootInfo *info = platsupport_get_bootinfo();
+ 
