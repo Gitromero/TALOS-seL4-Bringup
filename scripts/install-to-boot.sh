@@ -8,8 +8,7 @@
 # manual procedure is the reference.
 #
 # Usage:
-#   scripts/install-to-boot.sh <boot-partition> [--apply]                 verified baseline (default)
-#   scripts/install-to-boot.sh <boot-partition> --experimental [--apply]  experimental build + autoboot candidate
+#   scripts/install-to-boot.sh <boot-partition> [--apply]                 sel4test.uImage + autoboot boot.scr
 #   scripts/install-to-boot.sh <boot-partition> --restore-linux [--apply] put boot-linux.scr back as boot.scr
 #   scripts/install-to-boot.sh <boot-partition> --verify                  read-only: report what is on the card
 #
@@ -75,14 +74,13 @@ is_uboot_script() {
 # ---------------------------------------------------------------- arguments
 [ $# -ge 1 ] || usage
 BOOT="$1"; shift
-MODE=baseline
+MODE=install
 APPLY=0
 for arg in "$@"; do
     case "$arg" in
         --apply) APPLY=1 ;;
-        --experimental) [ "$MODE" = baseline ] || die "conflicting modes"; MODE=experimental ;;
-        --restore-linux) [ "$MODE" = baseline ] || die "conflicting modes"; MODE=restore ;;
-        --verify) [ "$MODE" = baseline ] || die "conflicting modes"; MODE=verify ;;
+        --restore-linux) [ "$MODE" = install ] || die "conflicting modes"; MODE=restore ;;
+        --verify) [ "$MODE" = install ] || die "conflicting modes"; MODE=verify ;;
         -h|--help) usage ;;
         *) die "unknown option: $arg" ;;
     esac
@@ -90,33 +88,24 @@ done
 [ "$MODE" != verify ] || [ "$APPLY" = 0 ] || die "--verify is read-only; do not combine with --apply"
 
 # ------------------------------------------------- repository file hashes
-BASE_SUMS="$REPO/images/SHA256SUMS"
-EXP_SUMS="$REPO/experimental/images/SHA256SUMS"
-SEL4_SCR_SHA="$(check_repo_file "$BASE_SUMS" boot/boot-sel4.scr)"
-TALOS_SCRIPTS=("$SEL4_SCR_SHA")
-if [ -f "$EXP_SUMS" ]; then
-    AUTO_SCR_SHA="$(expected_sha "$EXP_SUMS" experimental/boot/boot-auto.scr)"
-    TALOS_SCRIPTS+=("$AUTO_SCR_SHA")
-fi
+SUMS="$REPO/images/SHA256SUMS"
+SRC_IMAGE=images/sel4test.uImage; DST_IMAGE=sel4test.uImage
+SRC_SCRIPT=boot/boot-auto.scr
+SCRIPT_SHA="$(check_repo_file "$SUMS" "$SRC_SCRIPT")"
+[ "$MODE" != install ] || IMAGE_SHA="$(check_repo_file "$SUMS" "$SRC_IMAGE")"
+# TALOS scripts from earlier repository revisions may still be on teammates'
+# cards: the staging script boot-sel4.scr and the autoboot script that loaded
+# sel4-experimental.uImage. They must never be mistaken for the Linux backup.
+LEGACY_TALOS_SCRIPTS=(
+    8aabe37f2891eb2aabe33783cdb10aad19ecb78640d534e81a5fb89834f349fb
+    d1102ea1c35f14b7a959b6c23c4b1c7e4d0cbbd4dad9274d53e30a4ad28ff399
+)
+TALOS_SCRIPTS=("$SCRIPT_SHA" "${LEGACY_TALOS_SCRIPTS[@]}")
 is_talos_script() {
     local h; h="$(sha "$1")"
     for t in "${TALOS_SCRIPTS[@]}"; do [ "$h" = "$t" ] && return 0; done
     return 1
 }
-
-case "$MODE" in
-    baseline)
-        SRC_IMAGE=images/sel4.uImage;                 DST_IMAGE=sel4.uImage
-        SRC_SCRIPT=boot/boot-sel4.scr
-        IMAGE_SHA="$(check_repo_file "$BASE_SUMS" "$SRC_IMAGE")"
-        SCRIPT_SHA="$SEL4_SCR_SHA" ;;
-    experimental)
-        [ -f "$EXP_SUMS" ] || die "experimental/images/SHA256SUMS missing"
-        SRC_IMAGE=experimental/images/sel4-experimental.uImage; DST_IMAGE=sel4-experimental.uImage
-        SRC_SCRIPT=experimental/boot/boot-auto.scr
-        IMAGE_SHA="$(check_repo_file "$EXP_SUMS" "$SRC_IMAGE")"
-        SCRIPT_SHA="$(check_repo_file "$EXP_SUMS" "$SRC_SCRIPT")" ;;
-esac
 
 # ------------------------------------------------------ target validation
 # TALOS_SKIP_FSTYPE_CHECK=1 exists only for testing against a plain directory.
@@ -141,8 +130,8 @@ fi
 
 describe() {
     if is_talos_script "$1"; then
-        [ "$(sha "$1")" = "$SEL4_SCR_SHA" ] && echo "TALOS verified staging script" \
-                                            || echo "TALOS experimental autoboot script"
+        [ "$(sha "$1")" = "$SCRIPT_SHA" ] && echo "TALOS autoboot script (current)" \
+                                          || echo "TALOS script from an earlier repository revision"
     else
         echo "non-TALOS script (assumed Linux)"
     fi
@@ -154,14 +143,17 @@ if [ -e "$BACKUP" ]; then note "  boot-linux.scr: present, valid, not TALOS"; el
 
 # ------------------------------------------------------------ verify mode
 if [ "$MODE" = verify ]; then
+    if [ -e "$BOOT/$DST_IMAGE" ]; then
+        want="$(expected_sha "$SUMS" "$SRC_IMAGE")"
+        [ "$(sha "$BOOT/$DST_IMAGE")" = "$want" ] && note "  $DST_IMAGE: matches repository" \
+                                                   || note "  $DST_IMAGE: DOES NOT MATCH repository"
+    else
+        note "  $DST_IMAGE: absent"
+    fi
     for f in sel4.uImage sel4-experimental.uImage; do
-        [ -e "$BOOT/$f" ] || continue
-        case "$f" in
-            sel4.uImage) want="$(expected_sha "$BASE_SUMS" images/sel4.uImage)" ;;
-            *) [ -f "$EXP_SUMS" ] || continue
-               want="$(expected_sha "$EXP_SUMS" experimental/images/sel4-experimental.uImage)" ;;
-        esac
-        [ "$(sha "$BOOT/$f")" = "$want" ] && note "  $f: matches repository" || note "  $f: DOES NOT MATCH repository"
+        if [ -e "$BOOT/$f" ]; then
+            note "  $f: image from an earlier repository revision (unused; safe to delete)"
+        fi
     done
     leftovers="$(find "$BOOT" -maxdepth 1 -name '*.talos-tmp' | wc -l)"
     [ "$leftovers" = 0 ] || note "  $leftovers leftover *.talos-tmp file(s) from an interrupted run (safe to delete)"
@@ -216,7 +208,7 @@ checkpoint after-backup
 
 # 2) Image first, boot script last: until the final rename the card still boots
 #    whatever boot.scr it had before.
-note "Installing $MODE files:"
+note "Installing sel4test files:"
 stage_copy "$REPO/$SRC_IMAGE" "$BOOT/$DST_IMAGE" "$IMAGE_SHA"
 checkpoint after-image
 stage_copy "$REPO/$SRC_SCRIPT" "$BOOT/boot.scr" "$SCRIPT_SHA"

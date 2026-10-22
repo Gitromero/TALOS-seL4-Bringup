@@ -1,0 +1,10 @@
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-2-Clause"
+
+# Same rust-sel4 revision as seL4-rust-tutorial-code, which its Docker image was built for.
+[dependencies]
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "7a2321f2d84310ba7a09fe7f5988e6dcecde3566" }
+sel4-root-task = { git = "https://github.com/seL4/rust-sel4", rev = "7a2321f2d84310ba7a09fe7f5988e6dcecde3566" }

@@ -1,4 +1,4 @@
-# Verified and experimental binaries: never apply line-ending or text conversions.
+# Binaries: never apply line-ending or text conversions.
 *.uImage  binary
 *.scr     binary
 *.dtb     binary

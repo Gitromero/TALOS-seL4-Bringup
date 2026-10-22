@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Create the "corresponding source" archive for the seL4 images distributed in
+# Create the "corresponding source" archive for the seL4 image distributed in
 # this repository (GPL-2.0-only kernel plus BSD/MIT user-level code).
 #
 # The archive contains:
@@ -10,13 +10,13 @@
 #                      pinned manifest, boot script sources and license texts
 #   SOURCE-README.txt  how the pieces fit together
 #
-# Usage: experimental/scripts/make-source-archive.sh <synced-sel4test-checkout> <output-dir>
+# Usage: scripts/make-source-archive.sh <synced-sel4test-checkout> <output-dir>
 #   <synced-sel4test-checkout> is a `repo` checkout at the pinned manifest, e.g.
-#   the <work-dir>/sel4test created by build-experimental.sh. Local patches
+#   the <work-dir>/sel4test created by build-sel4test.sh. Local patches
 #   applied there do not matter: only committed HEADs are archived.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 die() { echo "ERROR: $*" >&2; exit 1; }
 [ $# -eq 2 ] || die "usage: $0 <synced-sel4test-checkout> <output-dir>"
 SRC="$(cd "$1" && pwd)"
@@ -38,16 +38,16 @@ while read -r path rev; do
 done < "$STAGE/$NAME/upstream/REVISIONS.txt"
 cp "$REPO/source/sel4test-manifest-pinned.xml" "$STAGE/$NAME/upstream/manifest.xml"
 
-for d in patches experimental/patches board source boot experimental/boot experimental/scripts LICENSES; do
+for d in patches board source boot scripts LICENSES; do
     mkdir -p "$STAGE/$NAME/talos/$(dirname "$d")"
     cp -a "$REPO/$d" "$STAGE/$NAME/talos/$d"
 done
-rm -f "$STAGE/$NAME/talos/boot/"*.scr "$STAGE/$NAME/talos/experimental/boot/"*.scr
+rm -f "$STAGE/$NAME/talos/boot/"*.scr
 cp "$REPO/THIRD_PARTY_NOTICES.md" "$STAGE/$NAME/talos/"
 
 cat > "$STAGE/$NAME/SOURCE-README.txt" <<'EOF'
-Corresponding source for the TALOS seL4 Discovery Kit images
-(images/sel4.uImage and experimental/images/sel4-experimental.uImage).
+Corresponding source for the TALOS seL4 Discovery Kit image
+(images/sel4test.uImage).
 
 upstream/   Unmodified sources at the revisions in upstream/REVISIONS.txt,
             laid out as the `repo` checkout described by upstream/manifest.xml.
@@ -56,11 +56,9 @@ upstream/   Unmodified sources at the revisions in upstream/REVISIONS.txt,
               ln -s tools/seL4/cmake-tool/griddle griddle
               ln -s projects/sel4test/easy-settings.cmake easy-settings.cmake
 talos/      TALOS changes and build scripts:
-              patches/kernel/0001-*.patch       (both images)
-              patches/sel4test/0001-*.patch     (both images)
-              experimental/patches/kernel/0002-*.patch (experimental image only)
-              board/discovery/build.sh          (verified image build)
-              experimental/scripts/build-experimental.sh (experimental build)
+              patches/kernel/0001-*.patch       (Discovery Kit board support, board MAC zeroed)
+              patches/sel4test/0001-*.patch     (TALOS banner)
+              scripts/build-sel4test.sh         (the build that produced the image)
             Apply patches with `git apply` or `patch -p1` inside the named
             project directory, then build as described in the scripts.
 Licenses: see talos/THIRD_PARTY_NOTICES.md and talos/LICENSES/, and the

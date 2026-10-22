@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scan build artifacts for personal or machine-specific data.
 
-Usage: python3 -I experimental/scripts/privacy_audit.py FILE... [--json OUT]
+Usage: python3 -I scripts/privacy_audit.py FILE... [--json OUT]
 
 Checks every printable string (length >= 4) and every embedded flattened
 device tree in each file. The current user's name, home directory and the

@@ -1,6 +1,6 @@
 # TALOS / PolarFire Discovery seL4 Bring-up — Context Handoff
 
-> **Repository copy.** Sections up to "Immediate next task" are the original handoff text, unchanged except that the local username in paths/image names is replaced with `<user>`, the private workspace path is shortened, and the main repository's name is omitted. Statements there are *historical*. The section **"Verified at repository assembly (2026-10-20)"** at the end records what was re-checked against real files, and it takes precedence where they differ.
+> **Repository copy.** Sections up to "Immediate next task" are the original handoff text, unchanged except that the local username in paths/image names is replaced with `<user>`, the private workspace path is shortened, and the main repository's name is omitted. Statements there are *historical*. The sections from **"Verified at repository assembly (2026-10-20)"** onward record later, re-checked work and take precedence where they differ. **Current state: see the dated updates at the end; the latest wins.**
 
 **Status:** Successful physical-board seL4 boot and sel4test execution. **118 tests passed, 49 tests disabled.** Rust runtime/Hello World is **not yet implemented**. This is a handoff of prior work, not proof of the current state of any filesystem; verify all paths and binaries locally.
 
@@ -116,3 +116,20 @@ Checked read-only against the developer workstation and the working seL4 SD card
 
   It was tested end to end with U-Boot 2025.10 in QEMU, including every failure branch, and is **not tested on the board**. The verified `boot-sel4.scr` and manual procedure remain the baseline.
 - Finding: U-Boot ≥ 2025.10 with `fdt_high` set to all ones rejects the in-place FDT (`Failed to reserve memory for fdt`). The board's saved environment does not set `fdt_high`.
+
+### Update 2026-10-21: current state (supersedes the above where they differ)
+
+- **Image:** the clean experimental build passed on the board: installed with its autoboot script, it booted with no typing and printed `118 tests passed. 49 tests disabled.` It is now the repository's only image, renamed `images/sel4test.uImage` (same bytes, SHA-256 `2c986076…`, load `0x80640000`). The autoboot script is `boot/boot-auto.scr` (only the image name and banner changed). The first image `sel4.uImage` and staging script `boot-sel4.scr` were removed (git history). `experimental/` was folded into `images/`, `boot/`, `patches/`, `scripts/`, `reports/`.
+- **Rebuild:** `scripts/build-sel4test.sh <empty-dir>` reproduced the image byte-for-byte again on 2026-10-21.
+- **Linux serial:** the board's FT4232H (`1514:2008`) gets only interface 2 bound by default. `echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id` (root) binds all: `ttyUSB1` = HSS (`>>`), `ttyUSB2` = U-Boot/seL4, `ttyUSB0` = JTAG. Only one program may read a port at a time.
+- **Network boot:** U-Boot has gigabit Ethernet, `dhcp`, `ping`, `tftpboot` (no `wget`). `tftp/serve.sh` runs dnsmasq TFTP in Docker; the host firewall needs inbound UDP 69 allowed; don't use `--tftp-single-port`. See `docs/NETBOOT.md`.
+- **Rust:** `rust-root-task/` builds a `no_std` rust-sel4 root task with the sel4test kernel configuration and the C elfloader. On the board it printed `Hello from Rust on seL4!` and `TALOS: Rust root task running, 50 untyped regions available`.
+- **`bdinfo`:** `fdt_blob = 0xbf333da0` in every session so far; still read it each time.
+- **Next:** see the 2026-10-22 update.
+
+### Update 2026-10-22
+
+- **Scope:** this repository is the PolarFire Discovery Kit bring-up only; `rust-root-task/` remains a minimal toolchain check.
+- **Board MAC:** zeroed in `board/discovery/discovery.dts/.dtb` and `patches/kernel/0001` (the separate `0002` patch was folded in). A clean rebuild is still byte-identical (`2c986076…`). The original MAC remains in git history, so publish from a fresh history. This resolves the "Publication cautions" item above.
+- **Board checks:** repeated cold boots confirmed. User LEDs driven from U-Boot by GPIO register writes; peripheral map in `docs/PERIPHERALS.md`.
+- **Still open on the board:** autoboot fallback to Linux, the renamed autoboot script, the pinned-checkout Rust image.

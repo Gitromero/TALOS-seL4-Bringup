@@ -2,10 +2,10 @@
 
 **Project:** TALOS capstone  
 **Target:** Microchip MPFS-DISCO-KIT, RISC-V 64-bit  
-**Result:** seL4 + sel4test booted on physical hardware; **118 tests passed, 49 disabled**  
+**Result:** seL4 + sel4test booted on physical hardware (**118 tests passed, 49 disabled**), first by hand and then fully automatically from a reproducible image; a `no_std` Rust root task running on seL4; images network-booted from U-Boot  
 **Date:** October 2026
 
-> **About this copy (read first).** This is the original bring-up engineering log (sections 1–15), copied into the TALOS bring-up repository with three kinds of changes: (1) local usernames in paths/Docker image names were replaced with `<user>` and the host laptop model was generalised; (2) the original "Appendix A" (the verbatim Claude prompt used for the port) was left out of this repository; (3) short **"Update (repository assembly)"** notes were added where later inspection of the real SD card and source tree superseded or sharpened a statement. Everything else is the historical text. Where this guide and [`BUILD_PROVENANCE.md`](BUILD_PROVENANCE.md) disagree, `BUILD_PROVENANCE.md` reflects the files actually shipped in this repository.
+> **About this copy (read first).** Sections 1–15 are the original bring-up engineering log; sections 16–20 continue it from the repository's first revision to the current state. Sections 1–15 were copied into the TALOS bring-up repository with three kinds of changes: (1) local usernames in paths/Docker image names were replaced with `<user>` and the host laptop model was generalised; (2) the original "Appendix A" (the verbatim Claude prompt used for the port) was left out of this repository; (3) short **"Update (repository assembly)"** notes were added where later inspection of the real SD card and source tree superseded or sharpened a statement. Everything else is the historical text. Where this guide and [`BUILD_PROVENANCE.md`](BUILD_PROVENANCE.md) disagree, `BUILD_PROVENANCE.md` reflects the files actually shipped in this repository.
 >
 > Teammates who only want to boot seL4 should use the [root README](../README.md) instead; this file is background.
 >
@@ -123,7 +123,7 @@ The actual implementation recorded in `bringup.md` was:
 4. `sel4test/board/discovery/build.sh`: orchestrated the Docker build and wrapped the final ELF as a U-Boot legacy image.
 5. `sel4test/board/discovery/bringup.md`: tracked findings, commands, artifacts, and pre-hardware blockers.
 
-> **Update (repository assembly):** inspecting the source tree found one more local change that this list omitted: `projects/sel4test/apps/sel4test-driver/src/main.c` prints `TALOS: root task reached seL4 user space` at the start of `main()`. The string is present in the shipped `sel4.uImage`, so this change is part of the verified build. It is captured in [`patches/sel4test/`](../patches/sel4test/).
+> **Update (repository assembly):** inspecting the source tree found one more local change that this list omitted: `projects/sel4test/apps/sel4test-driver/src/main.c` prints `TALOS: root task reached seL4 user space` at the start of `main()`. The string was present in the first image (`sel4.uImage`), so this change is part of the verified build. It is captured in [`patches/sel4test/`](../patches/sel4test/) and is in the current image too.
 
 ### Why not use the Icicle DTS unchanged?
 
@@ -154,8 +154,9 @@ The wrapper mounts the checkout at its host path and runs as the host UID, so ge
 
 ### Recorded configure-and-build commands (inside the container)
 
+Run from `sel4test/build-polarfire/`:
+
 ```bash
-# From sel4test/build-polarfire/
 ../init-build.sh \
   -DPLATFORM=polarfire \
   -DKernelPolarfireBoard=discovery \
@@ -268,7 +269,7 @@ iminfo 0x8e000000
 
 The original script used the Linux `fitImage` and `bootm start/loados/ramdisk/prep/go`. The exact custom `boot.scr` source and compilation command were not captured; preserve the working file from the spare card if you want to reproduce the automatic load step. Manual U-Boot commands below are sufficient for booting.
 
-> **Update (repository assembly):** the working `boot.scr` and `boot-linux.scr` were copied byte-for-byte from the spare card into [`boot/`](../boot/). Their text was extracted from the legacy-image payloads, and rebuilding that text with `mkimage` (using the original header timestamp) reproduces **both binaries byte-for-byte**, so [`boot/boot-sel4.cmd`](../boot/boot-sel4.cmd) is now a proven source for the verified script. It loads `sel4.uImage` to `${scriptaddr}`; the card's saved `uboot.env` sets `scriptaddr=0x8e000000`. See [`boot/README.md`](../boot/README.md).
+> **Update (repository assembly):** the working `boot.scr` and `boot-linux.scr` were copied byte-for-byte from the spare card. Their text was extracted from the legacy-image payloads, and rebuilding that text with `mkimage` (using the original header timestamp) reproduced **both binaries byte-for-byte**. The staging script loaded `sel4.uImage` to `${scriptaddr}` and did not run `bootm`; the card's saved `uboot.env` sets `scriptaddr=0x8e000000`. The staging script was shipped as `boot/boot-sel4.scr` in the repository's first revision and has since been replaced by the autoboot script (§16); it is in git history. [`boot/boot-linux.scr`](../boot/boot-linux.scr) is still shipped.
 
 ## 10. U-Boot hardware boot and first failure
 
@@ -293,7 +294,7 @@ U-Boot validated the image, then failed:
 Working FDT set to 0
 Loading Kernel Image to 80650000
 Device tree not found or missing FDT support
-### ERROR ### Please RESET the board ###
+    ### ERROR ### Please RESET the board ###
 ```
 
 This happened **before seL4 executed**. Because the legacy image was marked as a RISC-V Linux kernel, U-Boot expected an FDT argument. We reset and loaded the image again.
@@ -383,7 +384,7 @@ cp /media/<user>/boot/boot-linux.scr milestones/sel4test-polarfire/boot-linux.sc
 
 Only do this after verifying the correct mount and file names. Do not modify the original Linux SD card.
 
-> **Update (repository assembly):** the milestone script and archive above exist only on the original developer's machine. This repository instead ships the verified binaries plus minimal patches against pinned upstream SHAs; see [`BUILD_PROVENANCE.md`](BUILD_PROVENANCE.md).
+> **Update (repository assembly):** the milestone script and archive above exist only on the original developer's machine. This repository instead ships minimal patches against pinned upstream SHAs and an image rebuilt from them (§16); see [`BUILD_PROVENANCE.md`](BUILD_PROVENANCE.md).
 
 ### Verify preservation
 
@@ -417,4 +418,106 @@ bootm 0x8e000000 - <CURRENT_FDT_BLOB_ADDRESS>
 
 ---
 
-> **Update (repository assembly): milestone order changed.** The *immediate* next milestone is now a fully **automatic seL4 U-Boot boot script** (see the root [README](../README.md#next-milestone-automatic-sel4-boot)). Rust work comes after that. Neither is implemented in this repository.
+> **Update:** both next steps are done. The automatic boot script is §16, and the Rust root task is §18.
+
+---
+
+# Part 2: from the first repository revision to Rust (October 2026)
+
+Paths in sections 16–20 are relative to this repository unless stated otherwise.
+
+## 16. Reproducible image and automatic boot
+
+The first image could not be shared as-is: it embedded 594 absolute build paths containing the developer's username, plus the board's MAC address, and it could not be rebuilt byte-for-byte. It also needed `bootm` typed at `RISC-V #` on every boot.
+
+**Clean, reproducible build.** [`scripts/build-sel4test.sh`](../scripts/build-sel4test.sh) fetches the pinned manifest into an empty directory, checks every project SHA, applies the patches in [`patches/`](../patches/README.md), and builds inside the pinned `trustworthysystems/camkes@sha256:77dcf9c7…` container with the checkout mounted at a generic path (`/build/sel4test`) and `-ffile-prefix-map`. The only source change beyond the first image zeroes the board MAC in the kernel's device tree (a separate patch `kernel/0002` at the time, later folded into `kernel/0001`). Result: `images/sel4test.uImage`, SHA-256 `2c986076…`, load/entry `0x80640000` (the ELF loader sits 64 KiB lower than before because the payload lost about 35 KB of path strings). Three independent builds were byte-identical. All 11 generated kernel platform configuration files are identical to the first build's.
+
+**Automatic boot.** [`boot/boot-auto.cmd`](../boot/boot-auto.cmd) replaced the staging script. It finds the FDT itself from `${fdtcontroladdr}` (the value `bdinfo` prints as `fdt_blob`), checks it with `fdt addr`, checks that the image's load range doesn't overlap it, loads the image, checks its CRC with `iminfo`, clears `fdt_high` and runs `bootm 0x8e000000 - ${fdtcontroladdr}`. Any failed check falls back to `boot-linux.scr`. Every branch was exercised under QEMU with U-Boot 2025.10 ([test results](../reports/TEST_RESULTS.md)).
+
+**On the board.** Installed on the SD card (image then named `sel4-experimental.uImage`, with `boot-auto.scr` as `boot.scr`), the board went from power-on to the end of sel4test with no typing:
+
+```text
+Test suite passed. 118 tests passed. 49 tests disabled.
+All is well in the universe
+```
+
+This became the repository's only image. It was renamed `sel4test.uImage` (same bytes), the script's file name and banner were updated to match, and the first image and staging script were removed ([boot/README.md](../boot/README.md#history)). The installer still recognises both earlier scripts by hash.
+
+## 17. Linux host as the serial console
+
+**Finding.** On Linux only one serial port appeared: `/dev/ttyUSB0`. The board's USB-C connector #1 leads to an FTDI FT4232H (`1514:2008`, "Microsemi Embedded FlashPro5") with four channels: interface 0 is JTAG, interfaces 1–3 are UARTs. `ftdi_sio` had bound only interface 2.
+
+**Fix.** Add the board's USB ID to the driver, which binds all four channels:
+
+```bash
+sudo sh -c 'echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'
+```
+
+`new_id` lives under `/sys/bus/usb-serial/`, not `/sys/bus/usb/drivers/ftdi_sio/`. The result, identified by what each port printed:
+
+| Port | FT4232H interface | Role |
+|---|---|---|
+| `/dev/ttyUSB0` | 0 | JTAG channel, not a console |
+| `/dev/ttyUSB1` | 1 | HSS console: answered Enter with `>>` (Windows COM4) |
+| `/dev/ttyUSB2` | 2 | U-Boot / seL4 console (Windows COM5) |
+| `/dev/ttyUSB3` | 3 | silent |
+
+`/dev/serial/by-id/*FlashPro5*-if0N-port0` names stay stable across renumbering. The binding lasts until the board is unplugged. Consoles were opened with `picocom -b 115200 <port>` (exit `Ctrl-a Ctrl-x`).
+
+**Lesson: one reader per port.** While `picocom` and a script both read the U-Boot port, each received only part of the output (Linux delivers each byte to one reader), which looked like a frozen console. Writing to the port from a script while `picocom` reads it works well.
+
+**Getting to `RISC-V #`.** From `picocom`, pressing a key during `Hit any key to stop autoboot` stopped U-Boot before `boot.scr` ran. (During the original bring-up on Windows this had not been reliable.)
+
+Details: [SETUP.md](SETUP.md#serial-console-on-a-linux-host).
+
+## 18. Rust root task
+
+seL4 has no shell: after boot the kernel starts exactly one user program, the root task. sel4test's root task runs the tests and then has nothing left to do, which is why the console goes quiet after the summary. To run our own code, the root task itself is replaced.
+
+[`rust-root-task/`](../rust-root-task/README.md) builds a `no_std` Rust root task with [rust-sel4](https://github.com/seL4/rust-sel4) and packages it with the same kernel configuration and C elfloader as sel4test:
+
+1. Configure the kernel from the patched pinned checkout with sel4test's options ([`cmake/settings.cmake`](../rust-root-task/cmake/settings.cmake)) and build `kernel.elf` and `libsel4.a`. Building `libsel4.a`, not just the kernel, is what generates all libsel4 headers.
+2. Build the Rust program in the `sel4-rust-tutorial` image for target `riscv64gc-sel4-roottask` (FPU enabled in the kernel → `gc`), passing the kernel's source and generated libsel4 include directories in `SEL4_INCLUDE_DIRS`. The platform directory `libsel4/sel4_plat_include/polarfire` is required.
+3. Let the C elfloader bundle kernel, DTB and the Rust ELF ([`cmake/CMakeLists.txt`](../rust-root-task/cmake/CMakeLists.txt) sets the `rootserver_image` target's `ROOTSERVER_IMAGE` property directly and adds `util_libs/libcpio`), then wrap it with `make-uimage` as for sel4test.
+
+On the board (network-booted, §19):
+
+```text
+ELF-loading image 'kernel' to 80200000
+ELF-loading image 'rootserver' to 8022a000
+Bootstrapping kernel
+Available phys memory regions: 2
+  [80200000..84000000)
+  [8a000000..92000000)
+Booting all finished, dropped to user space
+Hello from Rust on seL4!
+TALOS: Rust root task running, 50 untyped regions available
+```
+
+The image that ran was built from the developer's local seL4 tree with the same settings. The repository's `build.sh` builds the same program against the clean pinned checkout.
+
+## 19. Network boot from U-Boot
+
+U-Boot on the board has working Ethernet (`ethernet@20110000`, gigabit) and the `dhcp`, `ping` and `tftpboot` commands (no `wget`). Serving images from the development computer over TFTP removes SD card swaps from the edit-build-boot loop.
+
+- **Server:** dnsmasq in TFTP-only mode in Docker with host networking ([`tftp/`](../tftp/)), so no `sudo` is needed to run it.
+- **Firewall:** the host's `ufw` dropped the board's requests (`[UFW BLOCK] … DPT=69` in the kernel log). One rule allowing inbound UDP 69 from the local subnet fixed it.
+- **dnsmasq option to avoid:** with `--tftp-single-port`, dnsmasq received requests but every reply failed with `Network is unreachable`. Without it, normal TFTP works through the single firewall rule because the rest of each transfer is replies to flows the server opened.
+- **Boot:**
+  ```text
+  setenv autoload no
+  dhcp
+  tftpboot 0x8e000000 <host-IP>:rust.uImage
+  bootm 0x8e000000 - <fdt_blob>
+  ```
+  A 177,016-byte image transferred at 350–850 KiB/s over the host's Wi-Fi; U-Boot's `crc32` of the loaded image matched the host file's CRC-32. `bdinfo` reported `fdt_blob = 0xbf333da0` in every session.
+
+Details: [NETBOOT.md](NETBOOT.md).
+
+## 20. Current state and next steps
+
+**Done:** reproducible seL4 + sel4test image that boots automatically from the SD card (118/49 on the board); Linux host serial setup; network boot; a Rust root task running on seL4 on the board.
+
+**Not yet tested on the board:** the autoboot script's fallback to Linux; the renamed autoboot script; the Rust image built by the repository's script from the pinned checkout.
+
+**Next, for this repository:** the open board checks above. `rust-root-task/` stays a minimal check that a Rust program runs on this board; the [seL4 Rust tutorial](https://sel4.github.io/seL4-rust-tutorial/) examples build the same way.

@@ -2,7 +2,7 @@
 
 ## What the SHA-256 files prove, and what they don't
 
-`images/SHA256SUMS` and `experimental/images/SHA256SUMS` list the SHA-256 hash of each binary. `sha256sum -c`, and the installer, check that your copy matches the hash **written in that file**.
+`images/SHA256SUMS` lists the SHA-256 hash of each binary. `sha256sum -c`, and the installer, check that your copy matches the hash **written in that file**.
 
 | Question | Answered by SHA256SUMS? |
 |---|---|
@@ -15,15 +15,16 @@ So SHA256SUMS gives **integrity** against accidents. It does **not** give **auth
 Practical meaning today: get the repository only from the team's official location. Compare hashes with a second channel if you can, for example the hash posted in the team chat by the person who tested the image. Known values:
 
 ```text
-29d926e476074f026c166d6032ad384d511e93dfaaa1c24b62fbed03549531f5  images/sel4.uImage            (verified baseline)
-8aabe37f2891eb2aabe33783cdb10aad19ecb78640d534e81a5fb89834f349fb  boot/boot-sel4.scr            (verified baseline)
+2c98607641ea3418f39e3b4396c9fd97afdd982b151a3b7a783408a41b887d27  images/sel4test.uImage   (booted on the board: 118/49)
+a5ab05d40c7d918150ded509a8a20ad91d39441d89772f6e992668160bcc6242  boot/boot-auto.scr
+322ee52106fd2067a0b45932501d46d277018dbe46706ef6e608b41955db0060  boot/boot-linux.scr
 ```
 
-Experimental hashes are in `experimental/images/SHA256SUMS` and are expected to change while it is developed.
+The Rust root task image is not shipped; build it yourself ([rust-root-task/](../rust-root-task/README.md)).
 
 ## Reproducibility as a partial substitute
 
-The experimental image can be rebuilt by anyone from public pinned sources ([build-experimental.sh](../experimental/scripts/build-experimental.sh)). Two independent builds produced byte-identical output. A teammate who rebuilds and gets the same SHA-256 has independently checked that the published experimental binary matches the published sources and patches. That is stronger than trusting a hash file, but it relies on the pinned container image. The **verified baseline cannot be reproduced byte-for-byte**, because it embeds the original developer's paths.
+`images/sel4test.uImage` and `boot/boot-auto.scr` can be rebuilt by anyone from public pinned sources ([build-sel4test.sh](../scripts/build-sel4test.sh)). Three independent builds of the image (two on 2026-10-20, one on 2026-10-21) were byte-identical, and the 2026-10-21 build also reproduced the current `boot-auto.scr`. A teammate who rebuilds and gets the same SHA-256 has independently checked that the published binary matches the published sources and patches. That is stronger than trusting a hash file, but it relies on the pinned container image.
 
 ## Future signed-release workflow (not implemented)
 

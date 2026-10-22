@@ -1,9 +1,9 @@
-# TALOS experimental seL4 autoboot CANDIDATE -- NOT verified on a physical board.
-# Loads sel4-experimental.uImage, validates image and U-Boot's own device tree,
+# TALOS seL4 autoboot for the PolarFire SoC Discovery Kit.
+# Loads sel4test.uImage, validates image and U-Boot's own device tree,
 # checks for memory overlap, then runs bootm with no user interaction.
 # On any failed check it falls back to the Linux script boot-linux.scr.
-echo === TALOS experimental seL4 autoboot (candidate, not hardware-verified) ===
-setenv talos_img sel4-experimental.uImage
+echo === TALOS seL4 autoboot ===
+setenv talos_img sel4test.uImage
 setenv talos_addr 0x8e000000
 setenv talos_ok 1
 if test -z "${devtype}"; then setenv devtype mmc; fi

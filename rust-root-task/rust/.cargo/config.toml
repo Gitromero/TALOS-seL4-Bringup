@@ -1,0 +1,14 @@
+# Mirrors seL4-rust-tutorial-code/.cargo/config.toml, retargeted to RISC-V.
+# riscv64gc because the PolarFire kernel config enables the F and D extensions.
+
+[env]
+RUST_TARGET_PATH = { value = "target-specs", relative = true }
+
+[build]
+target = "riscv64gc-sel4-roottask"
+rustflags = ["-Zunstable-options"] # for custom target specs
+
+[unstable]
+unstable-options = true
+build-std = ["core", "alloc", "compiler_builtins"]
+build-std-features = ["compiler-builtins-mem"]

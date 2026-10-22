@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 #
-# Build the TALOS experimental seL4/sel4test image for the PolarFire SoC
-# Discovery Kit from clean, pinned upstream sources plus this repository's
-# patches. Never touches an existing seL4 checkout.
+# Build the TALOS seL4/sel4test image (images/sel4test.uImage) for the
+# PolarFire SoC Discovery Kit from clean, pinned upstream sources plus this
+# repository's patches. Never touches an existing seL4 checkout.
 #
 # Usage:
-#   experimental/scripts/build-experimental.sh <new-empty-work-dir> [--update-repo]
+#   scripts/build-sel4test.sh <new-empty-work-dir> [--update-repo]
 #
 # Requirements: git, repo (Google repo launcher), docker, network access to
 # github.com. The toolchain container is pulled by digest (about 10 GB).
 #
 # Outputs land in <work-dir>/out/. With --update-repo they are also copied
-# into experimental/ in this repository and experimental/images/SHA256SUMS is
-# regenerated. The verified baseline under images/ and boot/ is never touched.
+# into images/ and boot/ in this repository and images/SHA256SUMS is
+# regenerated.
+#
+# The patched checkout stays in <work-dir>/sel4test; rust-root-task/build.sh
+# uses it to build the Rust root task against the same kernel.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST_URL=https://github.com/seL4/sel4test-manifest.git
 MANIFEST_SHA=11c9090d597e20d9a39474ec94be9f33f2964d6b
 # Generic upstream seL4 build image (not a per-user image), pinned by digest.
@@ -51,13 +54,12 @@ cmp -s "$SRC/.repo/manifests/default.xml" "$REPO/source/sel4test-manifest-pinned
 
 echo "== 2. Apply patches"
 git -C "$SRC/kernel" apply --whitespace=nowarn "$REPO/patches/kernel/0001-polarfire-add-discovery-kit-board.patch"
-git -C "$SRC/kernel" apply --whitespace=nowarn "$REPO/experimental/patches/kernel/0002-mpfs-discovery-zero-board-mac.patch"
 git -C "$SRC/projects/sel4test" apply --whitespace=nowarn "$REPO/patches/sel4test/0001-sel4test-driver-talos-banner.patch"
 
 echo "== 3. Build in container $TOOLCHAIN_IMAGE"
 docker run --rm \
     -u "$(id -u):$(id -g)" -e HOME=/tmp -e SOURCE_DATE_EPOCH \
-    -v "$SRC:$CPATH_IN" -v "$REPO/experimental/boot:/talos-boot:ro" -w "$CPATH_IN" \
+    -v "$SRC:$CPATH_IN" -v "$REPO/boot:/talos-boot:ro" -w "$CPATH_IN" \
     "$TOOLCHAIN_IMAGE" bash -euo pipefail -c "
         mkdir -p build && cd build
         MAP='-ffile-prefix-map=$CPATH_IN/='
@@ -74,7 +76,7 @@ docker run --rm \
             -DCMAKE_ASM_FLAGS=\"\$MAP\" > ../configure.log
         ninja > ../ninja.log
         # sel4test forces ElfloaderImage=elf for polarfire; wrap it as a
-        # legacy uImage (load = entry = ELF entry) exactly as the verified build did.
+        # legacy uImage (load = entry = ELF entry) exactly as the original bring-up build did.
         ../tools/seL4/cmake-tool/helpers/make-uimage \
             \$(command -v riscv64-unknown-elf-objcopy) \
             \$(command -v riscv64-unknown-elf-readelf) \
@@ -88,17 +90,17 @@ docker run --rm \
 
 echo "== 4. Collect outputs"
 B="$SRC/build/images"
-cp "$B/sel4test-driver-image-riscv-polarfire.uImage" "$WORK/out/sel4-experimental.uImage"
-cp "$B/sel4test-driver-image-riscv-polarfire" "$WORK/out/sel4-experimental.elf"
+cp "$B/sel4test-driver-image-riscv-polarfire.uImage" "$WORK/out/sel4test.uImage"
+cp "$B/sel4test-driver-image-riscv-polarfire" "$WORK/out/sel4test.elf"
 cp "$B/boot-auto.scr" "$WORK/out/boot-auto.scr"
 cp "$SRC/cmake-settings.txt" "$SRC/toolchain.txt" "$WORK/out/"
-(cd "$WORK/out" && sha256sum sel4-experimental.uImage sel4-experimental.elf boot-auto.scr | tee SHA256SUMS)
+(cd "$WORK/out" && sha256sum sel4test.uImage sel4test.elf boot-auto.scr | tee SHA256SUMS)
 
 if [ "$UPDATE_REPO" = 1 ]; then
-    echo "== 5. Update repository experimental/ artifacts"
-    cp "$WORK/out/sel4-experimental.uImage" "$REPO/experimental/images/sel4-experimental.uImage"
-    cp "$WORK/out/boot-auto.scr" "$REPO/experimental/boot/boot-auto.scr"
-    (cd "$REPO" && sha256sum experimental/images/sel4-experimental.uImage experimental/boot/boot-auto.scr \
-        > experimental/images/SHA256SUMS && cat experimental/images/SHA256SUMS)
+    echo "== 5. Update repository images/ and boot/ artifacts"
+    cp "$WORK/out/sel4test.uImage" "$REPO/images/sel4test.uImage"
+    cp "$WORK/out/boot-auto.scr" "$REPO/boot/boot-auto.scr"
+    (cd "$REPO" && sha256sum images/sel4test.uImage boot/boot-auto.scr boot/boot-linux.scr \
+        > images/SHA256SUMS && cat images/SHA256SUMS)
 fi
 echo "Build complete: $WORK/out"

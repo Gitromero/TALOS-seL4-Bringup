@@ -1,33 +1,46 @@
 # Test results
 
-**Date:** 2026-10-20. Every test below ran on the workstation, in QEMU, or against disposable FAT images. **No test was run on a physical Discovery Kit, and the working SD card was never written** (its file hashes were identical before and after all testing).
+Legend: ✅ passed · ❌ failed · ⏳ not performed · ➖ not applicable
 
-Legend: ✅ passed · ❌ failed · ⏳ not performed (needs hardware) · ➖ not applicable
+## On the Discovery Kit
 
-## Summary
+| Date | What | Result |
+|---|---|---|
+| 2026-10 | `sel4test.uImage` (then `sel4-experimental.uImage`) + autoboot `boot.scr` installed on the team's SD card; board powered on with no input | ✅ `Test suite passed. 118 tests passed. 49 tests disabled.` |
+| 2026-10-21 | Linux host serial console: after binding all FT4232H channels, HSS on interface 1 (`>>` prompt), U-Boot/seL4 on interface 2 | ✅ |
+| 2026-10-21 | U-Boot network: `dhcp` lease, `ping` of the gateway and of the host, `tftpboot` of a 177,016-byte image; board CRC-32 `2dacad46` equal to the host's | ✅ |
+| 2026-10-21 | Rust root task, network-booted with `bootm 0x8e000000 - 0xbf333da0` | ✅ `Hello from Rust on seL4!`, `50 untyped regions available` |
+| 2026-10-22 | Repeated cold boots (power removed) with autoboot | ✅ Booted into sel4test each time |
+| 2026-10-22 | Clean rebuild after zeroing the board MAC in all sources (patch `kernel/0002` folded into `kernel/0001`) | ✅ `sel4test.uImage` byte-identical (`2c986076…`); privacy audit: no non-zero MAC anywhere |
+| | Autoboot fallback to Linux | ⏳ QEMU only so far (below) |
+
+The 2026-10-21 runs were captured from the board's serial console. The 2026-10 autoboot run and the 2026-10-22 cold-boot run were reported by the team member who ran them.
+
+## Workstation, QEMU and disposable-image tests
+
+**Dates:** 2026-10-20, with the build and installer re-run on 2026-10-21. None of these touched a real SD card.
 
 | Area | Test | Result |
 |---|---|---|
-| Build | Clean build from pinned sources completes | ✅ (twice) |
-| Build | Two independent builds byte-identical | ✅ |
+| Build | Clean build from pinned sources completes | ✅ (three times) |
+| Build | Independent builds byte-identical | ✅ |
 | Build | All 10 projects at pinned SHAs; manifest identical to `source/` copy | ✅ |
 | Patches | `patches/kernel/0001` + `patches/sel4test/0001` apply to fresh GitHub checkouts at pinned SHAs | ✅ |
 | Patches | Patched files equal the original working tree (config.cmake, overlay, main.c identical; DTS differs only by the intended MAC line) | ✅ |
 | Image | `dumpimage -l`/`file`: legacy RISC-V kernel uImage, load = entry = `0x80640000`, ELF entry/LOAD agree | ✅ |
-| Image | Not identical to the verified image (`2c98…` ≠ `29d9…`) | ✅ |
-| Image | `sha256sum -c` for `images/` and `experimental/images/` | ✅ |
+| Image | `sha256sum -c images/SHA256SUMS` | ✅ |
 | Image | U-Boot `iminfo` header + data CRC (QEMU U-Boot 2025.10) | ✅ `Verifying Checksum ... OK` |
-| Device tree | Embedded DTB extracted and decompiled by `dtc` without errors; diff vs. baseline = MAC only | ✅ |
-| Device tree | Generated kernel platform config (11 files) identical to verified build | ✅ |
-| Privacy | Audit of all shipped binaries ([PRIVACY_AUDIT](PRIVACY_AUDIT.md)) | ✅ experimental clean; baseline not clean (expected, documented) |
-| QEMU | Experimental ELF on QEMU `virt` (OpenSBI): full sel4test | ✅ `Test suite passed. 118 tests passed. 49 tests disabled.` |
+| Device tree | Embedded DTB extracted and decompiled by `dtc` without errors; diff vs. the first image = MAC only | ✅ |
+| Device tree | Generated kernel platform config (11 files) identical to the original build | ✅ |
+| Privacy | Audit of all shipped binaries ([PRIVACY_AUDIT](PRIVACY_AUDIT.md)) | ✅ |
+| QEMU | Image on QEMU `virt` (OpenSBI): full sel4test | ✅ `Test suite passed. 118 tests passed. 49 tests disabled.` |
 | QEMU | **Autoboot via real U-Boot** (2025.10, QEMU), no input: script → `bootm` → seL4 → sel4test | ✅ 118 passed / 49 disabled, about 50 s |
 | Autoboot | Script source ↔ `.scr` payload byte-identical; `mkimage` generation | ✅ |
 | Autoboot | Every script branch exercised under QEMU U-Boot (table below) | ✅ |
-| Installer | 79 checks on disposable loop-mounted FAT images (list below) | ✅ 79/79 |
-| Installer | Mutation tests: harness detects removal of CRLF handling (2 failures) and of the backup guard (6 failures) | ✅ |
+| Installer | 88 checks on disposable loop-mounted FAT images (list below) | ✅ 88/88 |
+| Installer | Mutation tests: harness detects removal of CRLF handling and of the backup guard (2026-10-20), and removal of the earlier-revision script hashes (8 failures, 2026-10-21) | ✅ |
 | Source archive | Corresponding-source archive builds; byte-identical from two checkouts; complete vs. `git ls-tree` | ✅ |
-| Hardware | Anything on a physical Discovery Kit | ⏳ see [hardware test plan](../README.md#hardware-test-plan-in-this-order-record-full-serial-logs) |
+| Rust root task | `rust-root-task/build.sh` against the clean pinned checkout produces `rust-hello.uImage` containing `Hello from Rust on seL4!` | ✅ (board run of this exact build ⏳) |
 
 ## QEMU environment
 
@@ -46,7 +59,7 @@ The overlap, invalid-FDT and unset-FDT cases used a test-only wrapper `boot.scr`
 | FDT overlapping image (moved to `0x8e100000`) | `image range overlaps the FDT` | Linux fallback ✅ |
 | Invalid FDT (zeros) | `no valid FDT at 0x8e100000` | Linux fallback ✅ |
 | `fdtcontroladdr` unset | `fdtcontroladdr is not set` | Linux fallback ✅ |
-| Image missing | `sel4-experimental.uImage not found` | Linux fallback ✅ |
+| Image missing | `sel4-experimental.uImage not found` (now `sel4test.uImage`) | Linux fallback ✅ |
 | Image corrupted (1 byte) | `Bad Data CRC` → `image check failed` | Linux fallback ✅ |
 | Image missing and no `boot-linux.scr` | `boot-linux.scr not found, no fallback available` | stops at U-Boot ✅ |
 
@@ -54,26 +67,26 @@ In every fallback case `boot-linux.scr` was loaded and sourced. It then failed o
 
 **Defect found and fixed during testing:** the first version passed `${fdtcontroladdr}` straight to `bootm`. QEMU's U-Boot environment sets `fdt_high=0xffffffffffffffff` ("use FDT in place"), and U-Boot ≥ 2025.10 then fails with `Failed to reserve memory for fdt` / `FDT creation failed! hanging...`, because U-Boot has already reserved that memory (`boot/image-fdt.c`, compared between v2025.07 and v2025.10). The script now clears `fdt_high` in RAM before `bootm`, so U-Boot copies the FDT to free memory. That is also the path the board's saved environment takes, since it has no `fdt_high`. Two earlier defects were also fixed before testing: a `;` inside an `echo` (a hush command separator) and a misleading final message.
 
-**Note for the verified manual procedure:** the same U-Boot change means that on any future firmware with U-Boot ≥ 2025.10 **and** `fdt_high` set to all ones, `bootm 0x8e000000 - <fdt_blob>` would fail. `setenv fdt_high` before `bootm` avoids it. The tested board's environment does not set `fdt_high`.
+**Note for the manual procedure:** the same U-Boot change means that on any future firmware with U-Boot ≥ 2025.10 **and** `fdt_high` set to all ones, `bootm 0x8e000000 - <fdt_blob>` would fail. `setenv fdt_high` before `bootm` avoids it. The tested board's environment does not set `fdt_high`.
 
 ## Installer
 
-Tool: [`scripts/test-installer.sh`](../../scripts/test-installer.sh). Each scenario gets a fresh 64 MiB FAT image, attached with `udisksctl loop-setup` and mounted. The harness confirms each loop device is backed by its own temp file before use.
+Tool: [`scripts/test-installer.sh`](../scripts/test-installer.sh). Each scenario gets a fresh 64 MiB FAT image, attached with `udisksctl loop-setup` and mounted. The harness confirms each loop device is backed by its own temp file before use. Section 12 takes the two TALOS scripts from the repository's first revision out of git history. Run on 2026-10-21: **88 passed, 0 failed**.
 
 == 1. fresh install
 - dry run exits 0
 - dry run wrote nothing
 - apply exits 0
 - boot-linux.scr = Linux script
-- boot.scr = verified seL4 script
-- sel4.uImage matches
+- boot.scr = autoboot script
+- sel4test.uImage matches
 - no temp files left
 == 2. reinstall
 - second apply exits 0
 - backup still Linux script
 - --verify exits 0
 - --verify reports image match
-== 3. seL4 boot.scr with missing backup
+== 3. autoboot boot.scr with missing backup
 - refuses
 - card unchanged
 == 4. backup that is a TALOS script
@@ -91,7 +104,7 @@ Tool: [`scripts/test-installer.sh`](../../scripts/test-installer.sh). Each scena
 - empty checksum file refused
 - card unchanged
 == 7. CRLF checksum file (Windows checkout)
-- CRLF: seL4 boot.scr without backup still refused
+- CRLF: autoboot boot.scr without backup still refused
 - CRLF: card unchanged (backup not clobbered)
 - CRLF: normal install succeeds
 - CRLF: backup is the Linux script
@@ -104,33 +117,33 @@ Tool: [`scripts/test-installer.sh`](../../scripts/test-installer.sh). Each scena
 - boot.scr still Linux
 - backup is Linux script
 - no temp files left
-- no partial sel4.uImage
+- no partial sel4test.uImage
 - retry after freeing space succeeds
-- boot.scr now seL4
+- boot.scr now autoboot
 == 10. interrupted installation
 - abort at after-backup: interrupted (rc=99)
 - abort at after-backup: boot.scr still Linux
 - abort at after-backup: backup intact
 - abort at after-backup: rerun succeeds
-- abort at after-backup: boot.scr now seL4
+- abort at after-backup: boot.scr now autoboot
 - abort at after-backup: temp files cleaned
-- abort at before-rename:sel4.uImage: interrupted (rc=99)
-- abort at before-rename:sel4.uImage: boot.scr still Linux
-- abort at before-rename:sel4.uImage: backup intact
-- abort at before-rename:sel4.uImage: rerun succeeds
-- abort at before-rename:sel4.uImage: boot.scr now seL4
-- abort at before-rename:sel4.uImage: temp files cleaned
+- abort at before-rename:sel4test.uImage: interrupted (rc=99)
+- abort at before-rename:sel4test.uImage: boot.scr still Linux
+- abort at before-rename:sel4test.uImage: backup intact
+- abort at before-rename:sel4test.uImage: rerun succeeds
+- abort at before-rename:sel4test.uImage: boot.scr now autoboot
+- abort at before-rename:sel4test.uImage: temp files cleaned
 - abort at after-image: interrupted (rc=99)
 - abort at after-image: boot.scr still Linux
 - abort at after-image: backup intact
 - abort at after-image: rerun succeeds
-- abort at after-image: boot.scr now seL4
+- abort at after-image: boot.scr now autoboot
 - abort at after-image: temp files cleaned
 - abort at before-rename:boot.scr: interrupted (rc=99)
 - abort at before-rename:boot.scr: boot.scr still Linux
 - abort at before-rename:boot.scr: backup intact
 - abort at before-rename:boot.scr: rerun succeeds
-- abort at before-rename:boot.scr: boot.scr now seL4
+- abort at before-rename:boot.scr: boot.scr now autoboot
 - abort at before-rename:boot.scr: temp files cleaned
 == 11. restore Linux
 - restore exits 0
@@ -138,16 +151,25 @@ Tool: [`scripts/test-installer.sh`](../../scripts/test-installer.sh). Each scena
 - backup kept
 - restore without backup refused
 - card unchanged
-== 12. experimental install (explicit flag) and switching
-- experimental apply exits 0
-- boot.scr = autoboot candidate
-- sel4-experimental.uImage matches
-- backup is Linux script
-- switch to baseline exits 0
-- boot.scr = verified script
-- backup still Linux script
-- autoboot boot.scr without backup refused
-- card unchanged
+== 12. cards set up from an earlier repository revision
+- boot-sel4.scr as boot.scr, no backup: refused
+- boot-sel4.scr as boot.scr, no backup: card unchanged
+- boot-sel4.scr as boot-linux.scr: refused
+- boot-sel4.scr as boot-linux.scr: card unchanged
+- boot-sel4.scr with Linux backup: upgrade succeeds
+- boot-sel4.scr with Linux backup: boot.scr now autoboot
+- boot-sel4.scr with Linux backup: backup still Linux
+- boot-sel4.scr: --verify flags old images
+- boot-sel4.scr: --verify output names sel4.uImage
+- boot-auto-old.scr as boot.scr, no backup: refused
+- boot-auto-old.scr as boot.scr, no backup: card unchanged
+- boot-auto-old.scr as boot-linux.scr: refused
+- boot-auto-old.scr as boot-linux.scr: card unchanged
+- boot-auto-old.scr with Linux backup: upgrade succeeds
+- boot-auto-old.scr with Linux backup: boot.scr now autoboot
+- boot-auto-old.scr with Linux backup: backup still Linux
+- boot-auto-old.scr: --verify flags old images
+- boot-auto-old.scr: --verify output names sel4.uImage
 == 13. not a FAT mount point
 - plain directory refused
 - bad option refused
@@ -159,10 +181,8 @@ The interrupted-installation scenarios use the installer's test-only `TALOS_TEST
 
 | Test | Why |
 |---|---|
-| Any physical-board boot of the experimental image or autoboot script | No hardware access in this task. See the hardware test plan. |
-| `fdtcontroladdr` = `bdinfo fdt_blob` on the board | Needs hardware (plan step 1). Supported only by U-Boot source analysis. |
-| Board U-Boot command availability (`size`, `setexpr`, `fdt header get`) | Needs hardware (plan step 2). |
+| Autoboot fallback to Linux on the board | Not done yet. See the README's [Not yet tested on hardware](../README.md#not-yet-tested-on-hardware). |
+| Board run of the renamed autoboot script and of the pinned-checkout Rust image | The changes are a file name and banner (script) and kernel/toolchain origin (Rust); not yet booted. |
 | Installer `--apply` on a physical SD card | Deliberately not done. Disposable images only. |
 | Windows manual procedure | No Windows host. |
 | Pulling the toolchain image by digest on a fresh machine | The digest was already present locally. Its RepoDigest matches the pinned value. |
-| Linux boot via the fallback with a real `fitImage` | QEMU disk used a dummy `fitImage`. Plan step 6 covers it on hardware. |

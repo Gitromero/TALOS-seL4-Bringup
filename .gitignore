@@ -15,3 +15,8 @@ Thumbs.db
 .vscode/
 # Release assets (corresponding-source archive) are generated, not committed.
 dist/
+# Local build outputs of the Rust root task and files staged for TFTP.
+rust-root-task/build/
+rust-root-task/rust/target/
+tftp/root/*
+!tftp/root/.gitkeep
