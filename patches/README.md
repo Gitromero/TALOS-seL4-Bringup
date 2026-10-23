@@ -21,12 +21,13 @@ These are the **only** source changes behind `images/sel4test.uImage`, relative 
 
 ## Applying
 
-From the root of a `repo` checkout synced to the pinned manifest:
+From the root of a `repo` checkout synced to the pinned manifest, with `PATCHES` set to this directory (example path, use your clone's):
 
 ```bash
-git -C kernel apply --check /path/to/patches/kernel/0001-polarfire-add-discovery-kit-board.patch
-git -C kernel apply         /path/to/patches/kernel/0001-polarfire-add-discovery-kit-board.patch
-git -C projects/sel4test apply --whitespace=nowarn /path/to/patches/sel4test/0001-sel4test-driver-talos-banner.patch
+PATCHES=$HOME/TALOS-seL4-Bringup/patches
+git -C kernel apply --check "$PATCHES/kernel/0001-polarfire-add-discovery-kit-board.patch"
+git -C kernel apply         "$PATCHES/kernel/0001-polarfire-add-discovery-kit-board.patch"
+git -C projects/sel4test apply --whitespace=nowarn "$PATCHES/sel4test/0001-sel4test-driver-talos-banner.patch"
 ```
 
 `patch -p1` inside each directory also works. The sel4test patch deliberately keeps one line with trailing whitespace, so it reproduces the original edit byte-for-byte. `git apply` warns about it (`--whitespace=nowarn` silences that). `.gitattributes` marks `*.patch` as `-text -whitespace` so Git never rewrites the patches, but **editors that strip trailing whitespace will break them**.

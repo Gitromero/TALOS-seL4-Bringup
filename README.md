@@ -10,7 +10,7 @@ Take a **blank microSD card** to a **verified seL4 + sel4test boot** on a Microc
 |---|---|---|
 | seL4 + sel4test, **automatic boot** from the SD card | ✅ **Hardware-verified:** `118 tests passed. 49 tests disabled.` with no typing | this page |
 | Linux host as the serial console (all three UART ports) | ✅ Verified | [docs/SETUP.md](docs/SETUP.md#serial-console-on-a-linux-host) |
-| U-Boot network boot (DHCP + TFTP from your computer, no SD card swaps) | ✅ Verified | [docs/NETBOOT.md](docs/NETBOOT.md) |
+| U-Boot network boot (DHCP + TFTP from your computer, no SD card swaps) | ✅ Verified | [quick start](#network-boot-quick-start), [full guide](docs/NETBOOT.md) |
 | `no_std` **Rust** root task on seL4 (`Hello from Rust on seL4!`) | ✅ Verified (network boot) | [rust-root-task/](rust-root-task/README.md) |
 | Peripheral map (addresses, IRQs, clocks); user LEDs driven by register writes | ✅ LEDs verified from U-Boot | [docs/PERIPHERALS.md](docs/PERIPHERALS.md) |
 
@@ -66,11 +66,18 @@ Power off the board, remove the microSD card and put it in your computer. The of
 
 ### Linux host (recommended: the installer)
 
+From the root of this repository, find the card's mounted `boot` partition and do a dry run, which checks everything and changes nothing:
+
 ```bash
-lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS            # find the ~64M vfat partition labelled "boot"
-BOOT=/media/$USER/boot                                 # EXAMPLE ONLY: use your card's real mount point
-scripts/install-to-boot.sh "$BOOT"                     # dry run: checks everything, changes nothing
-scripts/install-to-boot.sh "$BOOT" --apply             # back up Linux boot.scr, install, verify
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+echo "BOOT=$BOOT"
+scripts/install-to-boot.sh "$BOOT"
+```
+
+`BOOT` should be one path such as `/media/<you>/boot`. If it is empty, the partition isn't mounted: see [docs/SETUP.md](docs/SETUP.md#mounting-the-fat-boot-partition), or set it by hand, e.g. `BOOT=/media/$USER/boot`. If the dry run reports no problems, install (backs up the Linux `boot.scr`, installs, verifies):
+
+```bash
+scripts/install-to-boot.sh "$BOOT" --apply
 ```
 
 The [installer](scripts/install-to-boot.sh) does the following:
@@ -86,11 +93,11 @@ Then unmount before removing the card, e.g. `udisksctl unmount -b /dev/sdX1` (yo
 
 ### Linux host, by hand
 
-Point `BOOT` at the card's FAT boot partition and check it:
+Point `BOOT` at the card's FAT boot partition and check it. Both files must be listed; otherwise **stop**, it is the wrong partition:
 
 ```bash
-BOOT=/media/$USER/boot                       # EXAMPLE ONLY: replace with your real mount point
-ls -l "$BOOT/boot.scr" "$BOOT/fitImage"      # both must exist, otherwise STOP: wrong partition
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+ls -l "$BOOT/boot.scr" "$BOOT/fitImage"
 ```
 
 **1. Back up the Linux boot script once.** If `strings "$BOOT/boot.scr" | grep -c TALOS` prints anything other than `0`, `boot.scr` is **not** the Linux script: stop.
@@ -99,16 +106,19 @@ ls -l "$BOOT/boot.scr" "$BOOT/fitImage"      # both must exist, otherwise STOP: 
 if [ ! -e "$BOOT/boot-linux.scr" ]; then
   cp "$BOOT/boot.scr" "$BOOT/boot-linux.scr" && sync
 fi
-ls -l "$BOOT/boot-linux.scr"                 # must exist before you continue
+ls -l "$BOOT/boot-linux.scr"
 ```
 
-**2. Install** (run from the root of this repository). `boot.scr` goes last:
+`boot-linux.scr` must be listed before you continue.
+
+**2. Install** (run from the root of this repository). `boot.scr` goes last, and the two hashes printed at the end must match the ones in `images/SHA256SUMS`:
 
 ```bash
 cp images/sel4test.uImage "$BOOT/sel4test.uImage"
 cp boot/boot-auto.scr "$BOOT/boot.scr"
 sync
-sha256sum "$BOOT/sel4test.uImage" "$BOOT/boot.scr"   # must match images/SHA256SUMS
+sha256sum "$BOOT/sel4test.uImage" "$BOOT/boot.scr"
+grep -e sel4test.uImage -e boot-auto.scr images/SHA256SUMS
 ```
 
 ### Windows host
@@ -170,27 +180,66 @@ After the summary nothing else runs: seL4 has no shell, and sel4test is the only
 
 ## Manual boot from the U-Boot prompt
 
-You need the `RISC-V #` prompt for the [Rust root task](rust-root-task/README.md), [network boot](docs/NETBOOT.md), or to boot the image by hand. Press a key while U-Boot prints `Hit any key to stop autoboot`. This stops U-Boot before it runs `boot.scr`. Then:
+You need the `RISC-V #` prompt for the [Rust root task](rust-root-task/README.md), [network boot](#network-boot-quick-start), or to boot the image by hand. Press a key while U-Boot prints `Hit any key to stop autoboot`. This stops U-Boot before it runs `boot.scr`. Then paste these one line at a time:
 
 ```text
 load mmc 0:1 0x8e000000 sel4test.uImage
-iminfo 0x8e000000                 # Load Address: 80640000, Verifying Checksum ... OK
-bdinfo                            # note the fdt_blob = 0x........ line
-fdt addr <FDT>                    # your fdt_blob value, no angle brackets
-fdt header                        # magic: 0xd00dfeed
-bootm 0x8e000000 - <FDT>
+iminfo 0x8e000000
+fdt addr ${fdtcontroladdr}
+fdt header
+bootm 0x8e000000 - ${fdtcontroladdr}
 ```
 
-- `<FDT>` is a placeholder. Our board reported `fdt_blob = 0xbf333da0` in every session so far, but read it from `bdinfo` rather than assuming it.
+- `iminfo` must show `Load Address: 80640000` and `Verifying Checksum ... OK`; `fdt header` must show `magic: 0xd00dfeed`. If either doesn't, stop and see [Troubleshooting](docs/TROUBLESHOOTING.md#load-or-iminfo-fails).
+- `${fdtcontroladdr}` is U-Boot's own device tree address, the same value `bdinfo` prints as `fdt_blob` (`0xbf333da0` on our board in every session so far). The autoboot script uses it the same way.
 - **Never leave out the FDT argument**: `bootm 0x8e000000` alone fails with `Device tree not found or missing FDT support` and needs a board reset.
 - If the board was reset, anything loaded into RAM is gone: `load` again before `bootm`.
 
-## Restore normal Linux boot
+## Network boot (quick start)
 
-Power off, put the card in your computer, mount the FAT boot partition, then:
+Instead of copying images to the SD card, U-Boot can download them from your computer over Ethernet. This is the fastest way to try a freshly built image. Verified on the board with the Rust root task. Nothing is written to the SD card. You need Docker on a Linux computer, and an Ethernet cable from connector **#2** to the same network (router) as your computer. Full guide, details and troubleshooting: **[docs/NETBOOT.md](docs/NETBOOT.md)**.
+
+**1. On your computer**, from the repository root: stage the image and start the TFTP server.
 
 ```bash
-scripts/install-to-boot.sh "$BOOT" --restore-linux --apply   # or by hand:
+cp images/sel4test.uImage tftp/root/sel4test.uImage
+tftp/serve.sh start
+```
+
+**2. Once per computer** (Ubuntu/Mint with `ufw`): allow TFTP from your local network through the firewall.
+
+```bash
+IFACE=$(ip route show default | awk '{print $5; exit}')
+SUBNET=$(ip -4 route show dev "$IFACE" scope link | awk '{print $1; exit}')
+echo "interface=$IFACE subnet=$SUBNET"
+sudo ufw allow in on "$IFACE" from "$SUBNET" to any port 69 proto udp comment 'sel4 tftp'
+```
+
+**3. On the board**, stop at `RISC-V #` (press a key during `Hit any key to stop autoboot`) and paste the commands that `serve.sh start` printed, one line at a time. They have your computer's address already filled in and look like this:
+
+```text
+setenv autoload no
+dhcp
+tftpboot 0x8e000000 192.168.1.10:sel4test.uImage
+iminfo 0x8e000000
+bootm 0x8e000000 - ${fdtcontroladdr}
+```
+
+`Loading: *T T T` means the firewall is still dropping the requests ([fix](docs/NETBOOT.md#3-allow-tftp-through-your-computers-firewall)).
+
+## Restore normal Linux boot
+
+Power off, put the card in your computer, mount the FAT boot partition, then from the repository root:
+
+```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+scripts/install-to-boot.sh "$BOOT" --restore-linux --apply
+```
+
+Or by hand:
+
+```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
 cp "$BOOT/boot-linux.scr" "$BOOT/boot.scr" && sync
 ```
 
@@ -209,7 +258,7 @@ On Windows, copy `boot-linux.scr`, paste it, rename the copy to `boot.scr`, and 
 | No output at all | Wrong port or settings: try all ports at 115200 8N1 and check power. |
 | Linux boots instead | `boot.scr` wasn't replaced, or the script fell back (look for a `TALOS:` line). Run `scripts/install-to-boot.sh "$BOOT" --verify`. |
 | `TALOS: sel4test.uImage not found` | The image is missing from the FAT boot partition or has a different name. |
-| `Device tree not found` | Manual boot without the FDT argument. Reset, reload, and use `bootm 0x8e000000 - <FDT>`. |
+| `Device tree not found` | Manual boot without the FDT argument. Reset, reload, and use `bootm 0x8e000000 - ${fdtcontroladdr}`. |
 | `Wrong Image Type for bootm command` | Nothing valid at `0x8e000000`, usually because the board was reset after loading. `load` (or `tftpboot`) again. |
 | Different test counts | Not this image or setup. See §5. |
 | Still stuck after everything above (hangs, no boot, card not detected) | **Last resort:** with the board **still powered on**, pull the microSD card out and push it back in. Do this a few times. Then, on the **HSS** console (the `>>` prompt), type `sdcard` and then `boot`. It is not a real fix, but it has sometimes worked. |
@@ -218,10 +267,10 @@ Full details: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Copy/paste summary
 
-1. On a Linux host, from this repository's root, set `BOOT` to your card's FAT `boot` mount point and run the installer:
+1. On a Linux host with the card's FAT `boot` partition mounted, from this repository's root, run the installer:
 
    ```bash
-   BOOT=/media/$USER/boot
+   BOOT=$(findmnt -nro TARGET -S LABEL=boot)
    scripts/install-to-boot.sh "$BOOT" --apply
    ```
 

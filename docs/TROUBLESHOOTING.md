@@ -23,9 +23,10 @@ Seen on the board: the kernel binds only one of the FT4232H's channels (interfac
 
 ## Linux boots instead of seL4
 
-Either `boot.scr` is still the Linux script, or the autoboot script hit a failed check and fell back. Look for `TALOS:` lines just before Linux starts ([autoboot messages](#autoboot-messages)). Check the card on your host:
+Either `boot.scr` is still the Linux script, or the autoboot script hit a failed check and fell back. Look for `TALOS:` lines just before Linux starts ([autoboot messages](#autoboot-messages)). Check the card on your host, from the repository root:
 
 ```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
 scripts/install-to-boot.sh "$BOOT" --verify
 ```
 
@@ -83,23 +84,25 @@ A good `iminfo` shows `Legacy image found`, `Image Type: RISC-V Linux Kernel Ima
 
 ## Invalid or missing FDT
 
-`bootm` needs a valid flattened device tree (FDT) for a RISC-V Linux-type image. Get **this session's** address:
+`bootm` needs a valid flattened device tree (FDT) for a RISC-V Linux-type image. These docs use U-Boot's own one, `${fdtcontroladdr}`, which is the same address `bdinfo` prints as `fdt_blob`. Check it:
 
 ```text
-bdinfo                    # look for: fdt_blob = 0x........
-fdt addr 0x........       # your value
-fdt header                # must print  magic: 0xd00dfeed
+bdinfo
+printenv fdtcontroladdr
+fdt addr ${fdtcontroladdr}
+fdt header
 ```
 
-- On our board `bdinfo` has shown `fdt_blob = 0xbf333da0` in every session so far (`fdt header`: `totalsize: 0x5065`, `version: 17`). It may differ between firmware releases or boards, so read it each time.
-- `<fdt_blob>` in these docs is a placeholder. Typing it literally makes `bootm` fail.
+- `printenv` should show the same address as `bdinfo`'s `fdt_blob = 0x...` line, and `fdt header` must print `magic: 0xd00dfeed`.
+- On our board `bdinfo` has shown `fdt_blob = 0xbf333da0` in every session so far (`fdt header`: `totalsize: 0x5065`, `version: 17`). It may differ between firmware releases or boards, which is why the commands use the variable rather than a fixed address.
+- If `fdtcontroladdr` is not set but `bdinfo` has an `fdt_blob` line, type that address in place of `${fdtcontroladdr}`.
 - If `bdinfo` has no `fdt_blob` line, or `fdt header` reports an error or bad magic, **don't run `bootm`**. Save the log and ask the team.
 
 ## `bootm` errors
 
 | You see | Meaning and fix |
 |---|---|
-| `Device tree not found or missing FDT support` then `### ERROR ### Please RESET the board ###` | Seen on the board: `bootm 0x8e000000` without the FDT argument. seL4 did not run. Reset, `load` again, and use `bootm 0x8e000000 - <fdt_blob>`. Mind the `-` in the middle. |
+| `Device tree not found or missing FDT support` then `### ERROR ### Please RESET the board ###` | Seen on the board: `bootm 0x8e000000` without the FDT argument. seL4 did not run. Reset, `load` again, and use `bootm 0x8e000000 - ${fdtcontroladdr}`. Mind the `-` in the middle. |
 | `Wrong Image Type for bootm command` / `ERROR -91: can't get kernel image!` | Seen on the board: the board had been reset after the image was loaded, so RAM no longer held it. `load` (or `tftpboot`) again. |
 | `Failed to reserve memory for fdt at …` / `FDT creation failed! hanging...` | U-Boot was told to use the FDT in place (`fdt_high` all ones) and refused. Reproduced under QEMU with U-Boot 2025.10, not seen on the board. Reset, then `setenv fdt_high` before `bootm` (session only). |
 
@@ -123,16 +126,23 @@ TFTP timeouts, firewall rules and server errors: [NETBOOT.md](NETBOOT.md#trouble
 
 ## Restore Linux boot
 
-On the host, with the FAT boot partition mounted:
+On the host, with the FAT boot partition mounted, from the repository root. First a dry run:
 
 ```bash
-scripts/install-to-boot.sh "$BOOT" --restore-linux          # dry run
-scripts/install-to-boot.sh "$BOOT" --restore-linux --apply  # boot.scr <- boot-linux.scr (staged, verified)
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+scripts/install-to-boot.sh "$BOOT" --restore-linux
+```
+
+If it reports no problems, apply it (copies `boot-linux.scr` over `boot.scr`, staged and verified):
+
+```bash
+scripts/install-to-boot.sh "$BOOT" --restore-linux --apply
 ```
 
 Or by hand:
 
 ```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
 cp "$BOOT/boot-linux.scr" "$BOOT/boot.scr" && sync
 ```
 
@@ -141,6 +151,7 @@ cp "$BOOT/boot-linux.scr" "$BOOT/boot.scr" && sync
 1. Check the card's Linux version: on the ext4 `root` partition, `ls /lib/modules` shows a name like `6.18.17-linux4microchip-2026.04.1-…`.
 2. If it is **2026.04.1**, this repository's [`boot/boot-linux.scr`](../boot/boot-linux.scr) is the script from that image (227-byte payload: loads `fitImage` and boots it). Copy it as **both** `boot-linux.scr` and `boot.scr`:
    ```bash
+   BOOT=$(findmnt -nro TARGET -S LABEL=boot)
    cp boot/boot-linux.scr "$BOOT/boot-linux.scr" && cp boot/boot-linux.scr "$BOOT/boot.scr" && sync
    ```
 3. For any other release, extract that release's `boot.scr` from its `.wic` image (mount its first partition on a host), or re-flash the official `.wic`. Re-flashing **erases the card**.

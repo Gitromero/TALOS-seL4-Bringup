@@ -41,7 +41,7 @@ Avnet's guide installs the **latest** FPGA design and Linux4Microchip release, w
 - **`scriptaddr`**: the manual steps and the autoboot script use `0x8e000000`.
 - **SBI**: seL4 relies on HSS for SBI console, timer and HSM services (`UseRiscVOpenSBI=OFF`).
 - **U-Boot commands**: the autoboot script needs `size`, `setexpr`, `fdt`, `test` and `iminfo` (all present in the tested U-Boot).
-- **`fdt_high` with U-Boot ≥ 2025.10**: if a newer U-Boot environment sets `fdt_high=0xffffffffffffffff`, then `bootm 0x8e000000 - <fdt_blob>` fails with `Failed to reserve memory for fdt` (reproduced under QEMU with U-Boot 2025.10). Run `setenv fdt_high` first. The autoboot script already does this. The tested board's environment does not set `fdt_high`.
+- **`fdt_high` with U-Boot ≥ 2025.10**: if a newer U-Boot environment sets `fdt_high=0xffffffffffffffff`, then `bootm 0x8e000000 - ${fdtcontroladdr}` fails with `Failed to reserve memory for fdt` (reproduced under QEMU with U-Boot 2025.10). Run `setenv fdt_high` first. The autoboot script already does this. The tested board's environment does not set `fdt_high`.
 
 If you use a different version, record it in the table below and share the full serial log. Exact release-tag URLs for the tested versions were **not** verified. Use the official [Linux4Microchip releases](https://github.com/linux4microchip/meta-mchp/releases) and [Discovery Kit reference design releases](https://github.com/polarfire-soc/polarfire-soc-discovery-kit-reference-design/releases) pages.
 

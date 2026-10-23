@@ -45,7 +45,13 @@ boot.scr   fitImage   uboot.env           (official image)
 boot-linux.scr   sel4test.uImage          (added by our procedure; boot.scr replaced)
 ```
 
-**Linux:** most desktops auto-mount it under `/media/<you>/boot`. Otherwise:
+**Linux:** most desktops auto-mount it under `/media/<you>/boot`. This prints where it is mounted (nothing means not mounted):
+
+```bash
+findmnt -nro TARGET -S LABEL=boot
+```
+
+Otherwise, mount it by hand (`sdX` is your card, found with `lsblk`):
 
 ```bash
 lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS
@@ -112,11 +118,16 @@ The `new_id` file is under **`/sys/bus/usb-serial/`**. `/sys/bus/usb/drivers/ftd
 
 Binding also claims interface 0, the JTAG channel, as `/dev/ttyUSB0`. That is harmless for the consoles. If FlashPro programming from this computer then fails to find the board, release it with `echo <usb-path>:1.0 | sudo tee /sys/bus/usb/drivers/ftdi_sio/unbind`, where `<usb-path>` is the board's device, e.g. `1-1` (`ls /sys/bus/usb/drivers/ftdi_sio/`). This last step has **not** been needed or tested yet.
 
-**3. Open the consoles**, one terminal each:
+**3. Open the consoles**, one terminal each. HSS:
 
 ```bash
-picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if01-port0    # HSS
-picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if02-port0    # U-Boot / seL4
+picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if01-port0
+```
+
+U-Boot / seL4:
+
+```bash
+picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if02-port0
 ```
 
 Exit picocom with `Ctrl-a Ctrl-x`. Enter sends a carriage return, which U-Boot accepts. `screen <port> 115200` works too (exit: `Ctrl-a k`).
@@ -125,7 +136,13 @@ On the verified host, the HSS port answered Enter with `>>`, and the U-Boot port
 
 ## Installer script
 
-[`scripts/install-to-boot.sh`](../scripts/install-to-boot.sh) automates the README's §3. It is **dry-run by default**:
+[`scripts/install-to-boot.sh`](../scripts/install-to-boot.sh) automates the README's §3. It is **dry-run by default**. It takes the mount point of the card's FAT `boot` partition:
+
+```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+```
+
+Then one of these modes (reference, not a sequence to paste as a whole):
 
 ```bash
 scripts/install-to-boot.sh "$BOOT"                        # dry run: report only

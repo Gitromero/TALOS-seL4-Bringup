@@ -120,10 +120,19 @@ The repository's first revision shipped `images/sel4.uImage` (SHA-256 `29d926e4â
 
 Prerequisites (Docker, `repo`, disk space, the pinned toolchain image) are listed in [SETUP.md](SETUP.md#docker-and-build-prerequisites-only-for-rebuilding-images).
 
+The work directory must be new or empty. From the repository root:
+
 ```bash
-scripts/build-sel4test.sh /path/to/new-empty-dir                # outputs in /path/to/new-empty-dir/out/
-sha256sum /path/to/new-empty-dir/out/sel4test.uImage            # compare with images/SHA256SUMS
-scripts/build-sel4test.sh /path/to/another-empty-dir --update-repo   # also copies into images/, boot/
+WORK=$HOME/talos-sel4test-build
+scripts/build-sel4test.sh "$WORK"
+sha256sum "$WORK/out/sel4test.uImage"
+grep sel4test.uImage images/SHA256SUMS
+```
+
+Outputs land in `$WORK/out/`; the two hashes must match. To rebuild **and** copy the results into `images/` and `boot/`, use another empty directory:
+
+```bash
+scripts/build-sel4test.sh "$HOME/talos-sel4test-build-2" --update-repo
 ```
 
 The script runs `repo init -u https://github.com/seL4/sel4test-manifest.git -b 11c9090dâ€¦` and `repo sync -c`, verifies the manifest and every project SHA, applies the two patches, and builds as above. The patched checkout stays in `<work-dir>/sel4test`, which `rust-root-task/build.sh` and `scripts/make-source-archive.sh` take as input. See [reports/BUILD_REPORT.md](../reports/BUILD_REPORT.md).

@@ -25,8 +25,18 @@ start)
         $NAME --interface="$IFACE" --bind-interfaces >/dev/null
     ip=$(ip -4 -br addr show "$IFACE" | awk '{print $3}' | cut -d/ -f1)
     echo "TFTP serving $HERE/root on $IFACE ($ip)"
-    echo "U-Boot:  dhcp; tftpboot 0x8e000000 $ip:<file>"
     ls -l "$HERE/root"
+    # Ready-to-paste U-Boot commands, one block per image, with this host's IP.
+    for f in "$HERE"/root/*; do
+        [ -f "$f" ] || continue
+        echo
+        echo "At RISC-V #, to boot $(basename "$f") (paste one line at a time):"
+        echo "  setenv autoload no"
+        echo "  dhcp"
+        echo "  tftpboot 0x8e000000 $ip:$(basename "$f")"
+        echo "  iminfo 0x8e000000"
+        echo "  bootm 0x8e000000 - \${fdtcontroladdr}"
+    done
     ;;
 stop)
     docker rm -f $NAME

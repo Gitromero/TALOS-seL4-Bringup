@@ -70,6 +70,14 @@ SOURCE_DATE_EPOCH=1777452750 mkimage -A riscv -O linux -T script -C none -n '' \
     -d boot-linux.cmd rebuilt.scr && cmp rebuilt.scr boot-linux.scr    # identical
 ```
 
+To repeat the check from the repository root, without touching the tracked files:
+
+```bash
+tail -c +73 boot/boot-linux.scr | cmp - boot/boot-linux.cmd && echo "payload = source"
+SOURCE_DATE_EPOCH=1777452750 mkimage -A riscv -O linux -T script -C none -n '' \
+    -d boot/boot-linux.cmd /tmp/boot-linux-rebuilt.scr && cmp /tmp/boot-linux-rebuilt.scr boot/boot-linux.scr && echo identical
+```
+
 | File | Created (header) | Type | Data size | Data CRC |
 |---|---|---|---|---|
 | `boot-linux.scr` | 2026-04-29 08:52:30 UTC | RISC-V Linux Script (uncompressed) | 227 B (script 219 B) | `0x8B8DC2B5` |
@@ -79,6 +87,7 @@ SOURCE_DATE_EPOCH=1777452750 mkimage -A riscv -O linux -T script -C none -n '' \
 `boot-linux.scr` **on your own SD card** is the backup that matters, because the README procedure creates it from your card's original `boot.scr`. To restore Linux, mount the card's FAT boot partition on a host and run:
 
 ```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
 cp "$BOOT/boot-linux.scr" "$BOOT/boot.scr" && sync
 ```
 
@@ -86,5 +95,5 @@ If your card's backup is missing, you can use this repository's `boot/boot-linux
 
 ## Do not
 
-- Do not add `bootm` with a fixed FDT address such as `0xbf333da0`. Use `${fdtcontroladdr}` as the autoboot does, or read `bdinfo` each session when booting by hand.
+- Do not add `bootm` with a fixed FDT address such as `0xbf333da0`. Use `${fdtcontroladdr}`, as the autoboot script and the manual commands in these docs do.
 - Do not edit `boot-auto.cmd` and call the result hardware-verified. Any logic change needs a board run.

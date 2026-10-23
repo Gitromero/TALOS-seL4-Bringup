@@ -67,7 +67,7 @@ In every fallback case `boot-linux.scr` was loaded and sourced. It then failed o
 
 **Defect found and fixed during testing:** the first version passed `${fdtcontroladdr}` straight to `bootm`. QEMU's U-Boot environment sets `fdt_high=0xffffffffffffffff` ("use FDT in place"), and U-Boot ≥ 2025.10 then fails with `Failed to reserve memory for fdt` / `FDT creation failed! hanging...`, because U-Boot has already reserved that memory (`boot/image-fdt.c`, compared between v2025.07 and v2025.10). The script now clears `fdt_high` in RAM before `bootm`, so U-Boot copies the FDT to free memory. That is also the path the board's saved environment takes, since it has no `fdt_high`. Two earlier defects were also fixed before testing: a `;` inside an `echo` (a hush command separator) and a misleading final message.
 
-**Note for the manual procedure:** the same U-Boot change means that on any future firmware with U-Boot ≥ 2025.10 **and** `fdt_high` set to all ones, `bootm 0x8e000000 - <fdt_blob>` would fail. `setenv fdt_high` before `bootm` avoids it. The tested board's environment does not set `fdt_high`.
+**Note for the manual procedure:** the same U-Boot change means that on any future firmware with U-Boot ≥ 2025.10 **and** `fdt_high` set to all ones, `bootm 0x8e000000 - ${fdtcontroladdr}` would fail. `setenv fdt_high` before `bootm` avoids it. The tested board's environment does not set `fdt_high`.
 
 ## Installer
 

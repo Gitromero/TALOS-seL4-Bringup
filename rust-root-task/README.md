@@ -47,30 +47,44 @@ How the pieces connect:
 
 You need:
 
-1. The patched sel4test checkout from a clean build: `scripts/build-sel4test.sh /path/to/new-empty-dir` leaves it in `/path/to/new-empty-dir/sel4test` ([prerequisites](../docs/SETUP.md#docker-and-build-prerequisites-only-for-rebuilding-images)).
+1. The patched sel4test checkout from a clean build: [`scripts/build-sel4test.sh "$WORK"`](../docs/BUILD_PROVENANCE.md#rebuilding) leaves it in `$WORK/sel4test` ([prerequisites](../docs/SETUP.md#docker-and-build-prerequisites-only-for-rebuilding-images)).
 2. The `sel4-rust-tutorial:latest` Docker image from the [seL4 Rust tutorial code](https://github.com/seL4/seL4-rust-tutorial-code) repository: clone it and run `make -C docker build`. That builds the image with your own UID, so files it writes into `rust-root-task/build/` belong to you.
 
-Then, from the repository root:
+Then, from the repository root, with `WORK` set to the same work directory (the default from BUILD_PROVENANCE shown here):
 
 ```bash
-rust-root-task/build.sh /path/to/new-empty-dir/sel4test               # add --reconfigure for a clean build
+WORK=$HOME/talos-sel4test-build
+rust-root-task/build.sh "$WORK/sel4test"
 ```
+
+Add `--reconfigure` for a clean build.
 
 Output: `rust-root-task/build/images/rust-hello.uImage` (about 175 KiB). The first build downloads rust-sel4 and its crates (network access to GitHub and crates.io).
 
 ## Boot
 
-**Network (fastest):** copy the image to `tftp/root/rust.uImage` and follow [docs/NETBOOT.md](../docs/NETBOOT.md).
+**Network (fastest):** from the repository root, copy the image into the TFTP folder and (re)start the server, then follow [docs/NETBOOT.md](../docs/NETBOOT.md):
 
-**SD card:** copy it next to `sel4test.uImage` on the FAT boot partition, e.g. as `rust.uImage`. At `RISC-V #`:
+```bash
+cp rust-root-task/build/images/rust-hello.uImage tftp/root/rust.uImage
+tftp/serve.sh start
+```
+
+**SD card:** copy it next to `sel4test.uImage` on the card's FAT boot partition:
+
+```bash
+BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+cp rust-root-task/build/images/rust-hello.uImage "$BOOT/rust.uImage" && sync
+```
+
+Then at `RISC-V #`, one line at a time (`iminfo` must end with `Verifying Checksum ... OK`, `fdt header` must print `magic: 0xd00dfeed`):
 
 ```text
 load mmc 0:1 0x8e000000 rust.uImage
 iminfo 0x8e000000
-bdinfo                              # note fdt_blob
-fdt addr <fdt_blob>
-fdt header                          # magic: 0xd00dfeed
-bootm 0x8e000000 - <fdt_blob>
+fdt addr ${fdtcontroladdr}
+fdt header
+bootm 0x8e000000 - ${fdtcontroladdr}
 ```
 
 The autoboot `boot.scr` keeps booting sel4test, so the card still works as before.
