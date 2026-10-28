@@ -8,6 +8,7 @@
 # Usage: ./serve.sh [start|stop|status|logs]
 #   IFACE=<interface> ./serve.sh start   # default: interface of the default route
 set -euo pipefail
+case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 NAME=sel4-tftp
@@ -48,7 +49,7 @@ logs)
     docker logs -f $NAME
     ;;
 *)
-    echo "usage: $0 [start|stop|status|logs]" >&2
-    exit 1
+    echo "usage: $0 [start|stop|status|logs]   (--help for details)" >&2
+    exit 2
     ;;
 esac

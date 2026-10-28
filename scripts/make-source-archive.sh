@@ -15,6 +15,7 @@
 #   the <work-dir>/sel4test created by build-sel4test.sh. Local patches
 #   applied there do not matter: only committed HEADs are archived.
 set -euo pipefail
+case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 die() { echo "ERROR: $*" >&2; exit 1; }

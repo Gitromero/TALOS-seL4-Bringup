@@ -18,6 +18,7 @@
 # Requirements: docker, the pinned seL4 toolchain image (see docs/SETUP.md) and
 # a local sel4-rust-tutorial:latest image (see rust-root-task/README.md).
 set -euo pipefail
+case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BUILD="$HERE/build"

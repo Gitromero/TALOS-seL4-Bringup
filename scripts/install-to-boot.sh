@@ -19,6 +19,7 @@
 #     and only then renamed into place; boot.scr is replaced last, so an
 #     interrupted run leaves a card that still boots Linux.
 set -euo pipefail
+case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 

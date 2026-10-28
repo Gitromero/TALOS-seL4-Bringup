@@ -8,6 +8,7 @@ device tree in each file. The current user's name, home directory and the
 host name are searched for but never written to the output: matches are
 reported under the labels <user>, <home> and <hostname>.
 """
+import argparse
 import getpass
 import json
 import os
@@ -87,27 +88,27 @@ def audit(path, sensitive):
 
 
 def main(argv):
-    out = None
-    if "--json" in argv:
-        k = argv.index("--json")
-        out = argv[k + 1]
-        argv = argv[:k] + argv[k + 2:]
-    if not argv:
-        sys.exit(__doc__)
+    parser = argparse.ArgumentParser(prog="scripts/privacy_audit.py", description=__doc__.split("\n\n")[0],
+                                     epilog=__doc__.split("\n\n", 2)[2],
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("files", nargs="+", metavar="FILE", help="build artifact to scan")
+    parser.add_argument("--json", metavar="OUT", help="also write the report to OUT")
+    args = parser.parse_args(argv)
     sensitive = {
         "<user>": getpass.getuser(),
         "<home>": os.path.expanduser("~"),
         "<hostname>": socket.gethostname(),
     }
-    report = {"tool": "privacy_audit.py", "results": [audit(p, sensitive) for p in argv]}
+    report = {"tool": "privacy_audit.py", "results": [audit(p, sensitive) for p in args.files]}
     text = json.dumps(report, indent=2)
     # Never echo the sensitive values themselves (examples may contain them).
     for label, value in sorted(sensitive.items(), key=lambda kv: -len(kv[1] or "")):
         if value:
             text = text.replace(value, label)
     text = re.sub(r'<home>/[^"]*', "<home>/...", text)
-    if out:
-        open(out, "w").write(text + "\n")
+    if args.json:
+        with open(args.json, "w") as f:
+            f.write(text + "\n")
     print(text)
 
 
