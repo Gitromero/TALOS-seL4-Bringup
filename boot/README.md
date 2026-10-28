@@ -18,7 +18,7 @@ SHA-256 values are in [`../images/SHA256SUMS`](../images/SHA256SUMS).
 3. Loads the image, runs `iminfo` (header + data CRC), clears `fdt_high` in RAM, then runs `bootm 0x8e000000 - ${fdtcontroladdr}`.
 4. If any step fails, it loads **`boot-linux.scr`** and runs it, so a broken install falls back to Linux.
 
-Every line it prints starts with `TALOS:`, so a failure says which check failed ([messages](../docs/TROUBLESHOOTING.md#autoboot-messages)).
+Every line it prints starts with `TALOS:`, so a failure says which check failed ([messages](../docs/troubleshooting.md#autoboot-messages)).
 
 **Why clear `fdt_high`:** with `fdt_high` set to all ones ("use the FDT in place"), U-Boot ≥ 2025.10 refuses to boot (`Failed to reserve memory for fdt`), because U-Boot has already reserved that memory. Clearing it lets `bootm` copy the FDT to free memory. The board's saved environment doesn't set `fdt_high`, so on the board this changes nothing. It is a RAM-only change and never saved.
 

@@ -8,7 +8,7 @@
 #      /dev/polarfire-uboot  interface 2  U-Boot / Linux / seL4 console
 #      /dev/polarfire-uart3  interface 3  third UART (silent in the bring-up)
 #
-# Install (docs/SETUP.md#stable-port-names): scripts/pf install-udev, or by hand:
+# Install (docs/getting-started.md#linux): scripts/board.py install-udev, or by hand:
 #   sudo cp host/udev/99-polarfire-discovery.rules /etc/udev/rules.d/
 #   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usb --subsystem-match=tty
 # With several kits attached, the names point at the last one plugged in; use

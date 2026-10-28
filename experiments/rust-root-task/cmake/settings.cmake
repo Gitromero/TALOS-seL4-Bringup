@@ -4,7 +4,7 @@
 # Reuses a patched sel4test checkout (kernel, seL4_tools, util_libs) so the
 # kernel is configured the same way as images/sel4test.uImage. Pass it with
 # -DSEL4TEST_DIR=<work-dir>/sel4test (the checkout scripts/build-sel4test.sh
-# leaves behind); rust-root-task/build.sh does this.
+# leaves behind); experiments/rust-root-task/build.sh does this.
 #
 
 cmake_minimum_required(VERSION 3.16.0)

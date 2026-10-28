@@ -2,27 +2,28 @@
 """Share one serial port between several programs.
 
 Linux hands each byte arriving on a serial port to only one reader, so a
-terminal and scripts/usb-flash.sh can't both read the U-Boot console. This
-tool runs a small broker that owns the port and copies its output to every
-connected client; anything a client types goes to the port. The broker starts
-on demand and exits when its last client leaves or the board is unplugged.
+console and a flash can't both read the U-Boot port. A small broker process
+owns the port and copies its output to every connected client; anything a
+client sends goes to the port. ensure_broker() starts one on demand; it exits
+about 3 s after its last client leaves, or when the board is unplugged.
 
-Usage:
-  scripts/serial-share.py console <port>     interactive terminal (exit: Ctrl-a Ctrl-x,
-                                             Ctrl-a Ctrl-a sends a literal Ctrl-a)
-  scripts/serial-share.py send <port> <text> write text (\\r for Enter) through the broker
-                                             if one is running, else straight to the port
-  scripts/serial-share.py sock <port>        if a broker is running: print its socket path and PID
+API (used by scripts/board.py):
+  ensure_broker(port)   connected client socket, starting the broker if needed
+  broker_pid(port)      PID of the running broker, or None
+  control(port)         the broker's control socket: "baud N", "lowlat 0|1".
+                        One holder at a time; the broker restores the port's
+                        settings as soon as it disconnects, even after a crash.
+  console(port)         interactive terminal (exit: Ctrl-a Ctrl-x; Ctrl-a Ctrl-a
+                        sends a literal Ctrl-a)
+  send(port, text)      write text (\\r for Enter) through the broker if one is
+                        running, else straight to the port
 
-Several consoles may be open at once, e.g. one in tmux and one in another SSH
-session; all see the same output. 115200 8N1, no flow control.
-
-Scripts can also take the control socket (control() below, one holder at a
-time) to change the port's baud rate or turn on the FTDI 1 ms latency timer,
-as scripts/usb-flash.sh does for YMODEM. The broker puts both back as soon as
-that connection closes, even if the script crashed.
+Sockets live in $XDG_RUNTIME_DIR/serial-share/<ttyUSBn>.{sock,ctl,sock.pid}.
+115200 8N1, no flow control. This file is also the broker's entry point
+(`serial_share.py serve <port>`), so it imports nothing outside the standard
+library.
 """
-import fcntl, os, select, signal, socket, struct, subprocess, sys, termios, time, tty
+import fcntl, os, select, signal, socket, struct, sys, termios, time, tty
 
 BAUD = termios.B115200
 MAX_BACKLOG = 1 << 20      # drop a client that stops reading after 1 MiB
@@ -127,10 +128,20 @@ def serve(port):
         owner, owner_in = None, b""
         try:
             termios.tcsetattr(ser, termios.TCSADRAIN, saved[0])
-            serial_flags(ser, saved[1])
+            if saved[1] is not None:
+                serial_flags(ser, saved[1])
         except OSError:
             pass
         saved = None
+
+    def settings():
+        """What release() restores. Ports without TIOCGSERIAL (not ftdi_sio)
+        have no latency flag to save; "lowlat" then just reports an error."""
+        try:
+            flags = serial_flags(ser)
+        except OSError:
+            flags = None
+        return termios.tcgetattr(ser), flags
     had_client, empty_since = False, time.time()
     try:
         while True:
@@ -168,7 +179,7 @@ def serve(port):
                     c.sendall(b"err busy: another program holds the control socket\n")
                     c.close()
                 else:
-                    owner, saved = c, (termios.tcgetattr(ser), serial_flags(ser))
+                    owner, saved = c, settings()
             if owner and owner in r:
                 try:
                     data = owner.recv(4096)
@@ -230,15 +241,30 @@ def ensure_broker(port):
     s = connect(port)
     if s:
         return s
-    subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "serve", port],
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    # Detached on purpose: its own session (no terminal signals), output to
+    # /dev/null, and nobody waits for it.
+    os.posix_spawn(sys.executable, [sys.executable, "-I", os.path.abspath(__file__), "serve", port],
+                   os.environ, setsid=True,
+                   file_actions=[(os.POSIX_SPAWN_OPEN, fd, os.devnull, os.O_RDWR, 0) for fd in (0, 1, 2)])
     for _ in range(50):
         time.sleep(0.1)
         s = connect(port)
         if s:
             return s
-    sys.exit(f"serial-share: could not start a broker for {port}")
+    raise OSError(f"could not start a serial-share broker for {port}")
+
+
+def broker_pid(port):
+    """PID of the broker serving port, or None if none is running."""
+    s = connect(port)
+    if not s:
+        return None
+    s.close()
+    try:
+        with open(sock_path(port) + ".pid") as f:
+            return int(f.read())
+    except (OSError, ValueError):
+        return None
 
 
 class control:
@@ -319,26 +345,12 @@ def send(port, text):
 
 
 def main():
+    if len(sys.argv) != 3 or sys.argv[1] != "serve":
+        sys.exit("usage: serial_share.py serve <port>  (started by ensure_broker(); "
+                 "use scripts/board.py console to open a console)")
     signal.signal(signal.SIGPIPE, signal.SIG_DFL)
-    a = sys.argv[1:]
-    if len(a) >= 2 and a[0] == "serve":
-        serve(a[1])
-    elif len(a) == 2 and a[0] == "console":
-        console(a[1])
-    elif len(a) == 3 and a[0] == "send":
-        send(a[1], a[2])
-    elif len(a) == 2 and a[0] == "sock":
-        s = connect(a[1])
-        if s:
-            s.close()
-            path = sock_path(a[1])
-            try:
-                pid = open(path + ".pid").read().strip()
-            except OSError:
-                pid = "?"
-            print(path, pid)
-    else:
-        sys.exit(__doc__.split("Usage:")[1].split("\n\n")[0])
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))   # run serve()'s cleanup
+    serve(sys.argv[2])
 
 
 if __name__ == "__main__":

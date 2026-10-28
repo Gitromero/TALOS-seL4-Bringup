@@ -17,6 +17,7 @@
 # The patched checkout stays in <work-dir>/sel4test; rust-root-task/build.sh
 # uses it to build the Rust root task against the same kernel.
 set -euo pipefail
+case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST_URL=https://github.com/seL4/sel4test-manifest.git

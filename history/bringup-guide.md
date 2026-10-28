@@ -5,7 +5,7 @@
 **Result:** seL4 + sel4test booted on physical hardware (**118 tests passed, 49 disabled**), first by hand and then fully automatically from a reproducible image; a `no_std` Rust root task running on seL4; images network-booted from U-Boot  
 **Date:** October 2026
 
-> **About this copy (read first).** Sections 1–15 are the original bring-up engineering log; sections 16–20 continue it from the repository's first revision to the current state. Sections 1–15 were copied into the TALOS bring-up repository with three kinds of changes: (1) local usernames in paths/Docker image names were replaced with `<user>` and the host laptop model was generalised; (2) the original "Appendix A" (the verbatim Claude prompt used for the port) was left out of this repository; (3) short **"Update (repository assembly)"** notes were added where later inspection of the real SD card and source tree superseded or sharpened a statement. Everything else is the historical text. Where this guide and [`BUILD_PROVENANCE.md`](BUILD_PROVENANCE.md) disagree, `BUILD_PROVENANCE.md` reflects the files actually shipped in this repository.
+> **About this copy (read first).** Sections 1–15 are the original bring-up engineering log; sections 16–20 continue it from the repository's first revision to the current state. Sections 1–15 were copied into the TALOS bring-up repository with three kinds of changes: (1) local usernames in paths/Docker image names were replaced with `<user>` and the host laptop model was generalised; (2) the original "Appendix A" (the verbatim Claude prompt used for the port) was left out of this repository; (3) short **"Update (repository assembly)"** notes were added where later inspection of the real SD card and source tree superseded or sharpened a statement. Everything else is the historical text. Where this guide and [`BUILD_PROVENANCE.md`](../docs/provenance.md) disagree, `BUILD_PROVENANCE.md` reflects the files actually shipped in this repository.
 >
 > Teammates who only want to boot seL4 should use the [root README](../README.md) instead; this file is background.
 >
@@ -384,7 +384,7 @@ cp /media/<user>/boot/boot-linux.scr milestones/sel4test-polarfire/boot-linux.sc
 
 Only do this after verifying the correct mount and file names. Do not modify the original Linux SD card.
 
-> **Update (repository assembly):** the milestone script and archive above exist only on the original developer's machine. This repository instead ships minimal patches against pinned upstream SHAs and an image rebuilt from them (§16); see [`BUILD_PROVENANCE.md`](BUILD_PROVENANCE.md).
+> **Update (repository assembly):** the milestone script and archive above exist only on the original developer's machine. This repository instead ships minimal patches against pinned upstream SHAs and an image rebuilt from them (§16); see [`BUILD_PROVENANCE.md`](../docs/provenance.md).
 
 ### Verify preservation
 
@@ -468,17 +468,17 @@ sudo sh -c 'echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'
 
 **Getting to `RISC-V #`.** From `picocom`, pressing a key during `Hit any key to stop autoboot` stopped U-Boot before `boot.scr` ran. (During the original bring-up on Windows this had not been reliable.)
 
-Details: [SETUP.md](SETUP.md#serial-console-on-a-linux-host).
+Details: [SETUP.md](../docs/getting-started.md#linux).
 
 ## 18. Rust root task
 
 seL4 has no shell: after boot the kernel starts exactly one user program, the root task. sel4test's root task runs the tests and then has nothing left to do, which is why the console goes quiet after the summary. To run our own code, the root task itself is replaced.
 
-[`rust-root-task/`](../rust-root-task/README.md) builds a `no_std` Rust root task with [rust-sel4](https://github.com/seL4/rust-sel4) and packages it with the same kernel configuration and C elfloader as sel4test:
+[`rust-root-task/`](../experiments/rust-root-task/README.md) builds a `no_std` Rust root task with [rust-sel4](https://github.com/seL4/rust-sel4) and packages it with the same kernel configuration and C elfloader as sel4test:
 
-1. Configure the kernel from the patched pinned checkout with sel4test's options ([`cmake/settings.cmake`](../rust-root-task/cmake/settings.cmake)) and build `kernel.elf` and `libsel4.a`. Building `libsel4.a`, not just the kernel, is what generates all libsel4 headers.
+1. Configure the kernel from the patched pinned checkout with sel4test's options ([`cmake/settings.cmake`](../experiments/rust-root-task/cmake/settings.cmake)) and build `kernel.elf` and `libsel4.a`. Building `libsel4.a`, not just the kernel, is what generates all libsel4 headers.
 2. Build the Rust program in the `sel4-rust-tutorial` image for target `riscv64gc-sel4-roottask` (FPU enabled in the kernel → `gc`), passing the kernel's source and generated libsel4 include directories in `SEL4_INCLUDE_DIRS`. The platform directory `libsel4/sel4_plat_include/polarfire` is required.
-3. Let the C elfloader bundle kernel, DTB and the Rust ELF ([`cmake/CMakeLists.txt`](../rust-root-task/cmake/CMakeLists.txt) sets the `rootserver_image` target's `ROOTSERVER_IMAGE` property directly and adds `util_libs/libcpio`), then wrap it with `make-uimage` as for sel4test.
+3. Let the C elfloader bundle kernel, DTB and the Rust ELF ([`cmake/CMakeLists.txt`](../experiments/rust-root-task/cmake/CMakeLists.txt) sets the `rootserver_image` target's `ROOTSERVER_IMAGE` property directly and adds `util_libs/libcpio`), then wrap it with `make-uimage` as for sel4test.
 
 On the board (network-booted, §19):
 
@@ -512,7 +512,7 @@ U-Boot on the board has working Ethernet (`ethernet@20110000`, gigabit) and the 
   ```
   A 177,016-byte image transferred at 350–850 KiB/s over the host's Wi-Fi; U-Boot's `crc32` of the loaded image matched the host file's CRC-32. `bdinfo` reported `fdt_blob = 0xbf333da0` in every session.
 
-Details: [NETBOOT.md](NETBOOT.md).
+Details: [NETBOOT.md](../docs/flashing.md#network-boot).
 
 ## 20. Current state and next steps
 

@@ -16,9 +16,12 @@ Thumbs.db
 # Release assets (corresponding-source archive) are generated, not committed.
 dist/
 # Local build outputs of the Rust root task and files staged for TFTP.
-rust-root-task/build/
-rust-root-task/rust/target/
+experiments/rust-root-task/build/
+experiments/rust-root-task/rust/target/
 tftp/root/*
 !tftp/root/.gitkeep
-# Console logs written by scripts/usb-flash.sh and scripts/network-flash.sh.
+# Console logs written by scripts/board.py flash.
 logs/
+# Python bytecode caches.
+__pycache__/
+*.py[cod]

@@ -1,4 +1,6 @@
-# Discovery Kit peripheral map
+# Discovery Kit hardware
+
+Sections 1–6 are the peripheral map; [§7](#7-serial-channels-and-board-reset) covers the serial channels and remote reset, and [§8](#8-firmware-compatibility) the firmware versions the images were tested with.
 
 What hardware the PolarFire SoC Discovery Kit exposes, where each block lives in physical memory, how it's switched on, which interrupt it raises, and how a seL4 root task (or partition) reaches it. Ordered by relevance to TALOS, an APEX-like (ARINC 653-style) partitioned OS on seL4: first the user LEDs (the simplest output, verified on the board), then peripherals a partitioned system is likely to use, then the rest.
 
@@ -134,7 +136,7 @@ Which of these TALOS uses, and which partition owns each, is still open. The col
 | **CorePWM (fabric)** | `0x4000_0000` (0xF0 bytes) | none | FIC0 (24) | okay | Dimming/PWM outputs; what its outputs connect to depends on the reference design, **unchecked** |
 | **MMUART1 / UART2 / UART3** | `0x2010_0000` / `0x2010_2000` / `0x2010_4000` | 91 / 92 / 93 | 6 / 7 / 8 | okay / disabled / disabled | A user-space console or comms port for a partition (16550-compatible, 32-bit registers, `reg-shift` 2) |
 | **CoreUART (fabric)** | `0x4000_0300` | 129 | FIC0 (24) | okay | Extra UART in the fabric |
-| **Ethernet MAC0** | `0x2011_0000` (8 KiB) | 64–69 | 1 | okay (SGMII, PHY addr 11) | Networking partition (big job: needs DMA memory and a driver). Working under U-Boot ([NETBOOT.md](NETBOOT.md)) |
+| **Ethernet MAC0** | `0x2011_0000` (8 KiB) | 64–69 | 1 | okay (SGMII, PHY addr 11) | Networking partition (big job: needs DMA memory and a driver). Working under U-Boot ([network boot](flashing.md#network-boot)) |
 | **Inter-hart mailbox (IHC)** | `0x5000_0000` (fabric) | 178–180 | FIC | disabled | Only if TALOS ever runs work on other harts outside seL4 |
 
 **PLIC IRQ numbers** are the PLIC source IDs from the DT (decimal); pass them to `IrqControl::irq_control_get` to get an IRQ handler capability, then bind a notification, as rust-sel4's serial-device example does. The kernel was built with `MAX_IRQ 186`.
@@ -242,6 +244,82 @@ Watchdog clocks come from the AHB bus clock, not a gated bit. For Watchdog 4 the
 On the board, the Rust root task reported **50 untyped regions**: the RAM untypeds plus the device untypeds that cover the peripherals above.
 
 ---
+
+## 7. Serial channels and board reset
+
+USB-C connector **#1** is an FTDI FT4232H (`Microsemi Embedded FlashPro5`, USB ID `1514:2008`). Its four channels, and how the tools find them on Linux ([setup](getting-started.md#linux)):
+
+| Channel | Console | Linux name (udev rule) | `by-id` fallback | Override |
+|---|---|---|---|---|
+| interface 0 | JTAG (FlashPro programming), not a console | `/dev/polarfire-jtag` | `/dev/serial/by-id/*FlashPro5*-if00-port0` | `JTAG_PORT` |
+| interface 1 | HSS firmware (MMUART0, likely), `>>` prompt | `/dev/polarfire-hss` | `...-if01-port0` | `HSS_PORT` |
+| interface 2 | U-Boot / Linux / seL4 (MMUART4, the SBI console) | `/dev/polarfire-uboot` | `...-if02-port0` | `UBOOT_PORT` |
+| interface 3 | third UART (MMUART1, likely), silent so far | `/dev/polarfire-uart3` | `...-if03-port0` | `UART3_PORT` |
+
+- **Never use `ttyUSB` numbers.** They follow the order the channels were bound, not the interface order: after the `new_id` fix on one host the U-Boot console stayed `/dev/ttyUSB0` and HSS became `/dev/ttyUSB2` until a replug. The tools look ports up by role in the order *override variable → udev name → `by-id` name* (`scripts/polarfire/ports.py`).
+- Out of the box `ftdi_sio` binds only interface 2. [`host/udev/99-polarfire-discovery.rules`](../host/udev/99-polarfire-discovery.rules) binds all four on every plug-in (`new_id` with `1514 2008`) and creates the names above.
+- **Reset without touching the board.** The HSS console stays live after boot and accepts `help`, which lists `YMODEM BOOT RESET HELP VERSION UPTIME DEBUG MEMTEST QSPI EMMC MMC SDCARD PAYLOAD SPI RESUME ECC`. `RESET` reboots the board into HSS → U-Boot; `scripts/board.py reset` and `flash` use it. Only power-cycling and SD-card swaps need someone at the board.
+- **Don't use the HSS `YMODEM` command.** It writes eMMC/QSPI. Images are loaded with U-Boot's `loady` instead, into RAM only ([flashing](flashing.md)).
+- U-Boot has no `usb`, `ums`, `dfu` or `fastboot`, and the SoC's USB OTG (MUSB, `0x2020_1000`) is disabled in the device tree, so the FT4232H serial link is the only USB path to the board.
+- `bootdelay` is 2 s; any key during `Hit any key to stop autoboot` stops at `RISC-V #`.
+
+## 8. Firmware compatibility
+
+Which board firmware the TALOS seL4 images have been used with, and how sure we are of each value.
+
+**Evidence levels**
+
+- **Confirmed**: read directly from files at repository assembly (2026-10-20): the board-extracted device tree, or the seL4 SD card's root filesystem.
+- **Historical**: recorded in the bring-up log at the time, but not re-checkable from files.
+- **Untested**: no TALOS image has been run with it.
+
+### Tested configuration (`sel4test.uImage` autoboot: 118 passed / 49 disabled)
+
+| Component | Version | Evidence | Source of evidence |
+|---|---|---|---|
+| Linux4Microchip SD image | **2026.04.1** (Linux 6.18.17) | Confirmed | `/lib/modules/6.18.17-linux4microchip-2026.04.1-g7fbe4f69684d` on the seL4 card's root partition |
+| U-Boot | **2025.07-linux4microchip-2026.04** | Confirmed | `u-boot,version` in [`board/discovery/discovery.dts`](../board/discovery/discovery.dts) (extracted from the running board) |
+| FPGA reference design | **MPFS_DISCOVERY_KIT reference RTL v2507** | Confirmed | root `compatible = "microchip,mpfs-disco-kit-reference-rtl-v2507"` in the same DTS |
+| Hart Software Services (HSS) | **0.99.53** | Historical | bring-up log ([bring-up guide §2](../history/bringup-guide.md#2-hardware-firmware-and-host)) |
+| SBI implementation | spec v2.0, impl ID `0x8`, impl version `0x10002` | Historical | bring-up log |
+| `boot-linux.scr` | from the 2026.04.1 image, header date 2026-04-29 | Confirmed | `boot/boot-linux.scr` (byte copy from the card) |
+| U-Boot environment | `scriptaddr=0x8e000000`, `fdt_addr_r=0x8a000000`, `kernel_addr_r=0x80200000`, `bootdelay=2`, `boot_targets= mmc0 dhcp` | Confirmed (file); not confirmed as the board's live environment | `uboot.env` on the card (valid CRC) |
+
+HSS and FPGA programming were **not** changed during the seL4 bring-up. The board already had them from the official setup.
+
+Observed on the same board on 2026-10-21 (U-Boot console):
+
+| Item | Value |
+|---|---|
+| Firmware banner before U-Boot | `OpenSBI v1.2` (runtime SBI version 2.0, `Platform Name: Microchip PolarFire(R) SoC`, `Domain1 Name: u-boot.bin`, boot hart 1) |
+| U-Boot | `2025.07-linux4microchip-2026.04 (Apr 29 2026 - 08:52:30 +0000)`, `Model: Microchip PolarFire-SoC Discovery Kit`, `DRAM: 1 GiB (total 1.8 GiB)` |
+| U-Boot serial loading | `loady` / `loadx` / `loadb` available; `loady` works up to 1.5 Mbaud (3 Mbaud fails). No `usb`, `ums`, `dfu` or `fastboot`, and the SoC's USB OTG is disabled in the device tree ([flashing](flashing.md)) |
+| U-Boot network | `eth0: ethernet@20110000`, gigabit link, `dhcp` / `ping` / `tftpboot` available, no `wget` ([network boot](flashing.md#network-boot)) |
+| `bdinfo` | `fdt_blob = 0xbf333da0`, `relocaddr = 0xbfb3b000`, boot hart 1 |
+
+QEMU runs (QEMU 8.2.2 `virt` + built-in OpenSBI + Ubuntu U-Boot 2025.10 `qemu-riscv64_smode`) are emulation only and are recorded in [TEST_RESULTS](../reports/TEST_RESULTS.md); they are not Discovery Kit firmware.
+
+### Other versions
+
+Avnet's guide installs the **latest** FPGA design and Linux4Microchip release, which may be newer than the table above. **Newer releases are untested.** What could break:
+
+- **Memory map**: both images expect seL4 RAM at `0x80000000–0x84000000` and `0x8a000000–0x92000000`, with the first 2 MiB reserved for SBI. A release that moves reserved regions or the HSS payload into those ranges could break seL4.
+- **`scriptaddr`**: the manual steps and the autoboot script use `0x8e000000`.
+- **SBI**: seL4 relies on HSS for SBI console, timer and HSM services (`UseRiscVOpenSBI=OFF`).
+- **U-Boot commands**: the autoboot script needs `size`, `setexpr`, `fdt`, `test` and `iminfo` (all present in the tested U-Boot).
+- **`fdt_high` with U-Boot ≥ 2025.10**: if a newer U-Boot environment sets `fdt_high=0xffffffffffffffff`, then `bootm 0x8e000000 - ${fdtcontroladdr}` fails with `Failed to reserve memory for fdt` (reproduced under QEMU with U-Boot 2025.10). Run `setenv fdt_high` first. The autoboot script already does this. The tested board's environment does not set `fdt_high`.
+
+If you use a different version, record it in the table below and share the full serial log. Exact release-tag URLs for the tested versions were **not** verified. Use the official [Linux4Microchip releases](https://github.com/linux4microchip/meta-mchp/releases) and [Discovery Kit reference design releases](https://github.com/polarfire-soc/polarfire-soc-discovery-kit-reference-design/releases) pages.
+
+### Results reported by teammates
+
+| Date | Board / who | Linux4Microchip | U-Boot | HSS | FPGA design | Image | Result |
+|---|---|---|---|---|---|---|---|
+| 2026-10 (bring-up) | original board | 2026.04.1 | 2025.07-linux4microchip-2026.04 | 0.99.53 (historical) | v2507 | first image `sel4.uImage` `29d926e4…` (removed; in git history), manual `bootm` | 118 passed / 49 disabled |
+| 2026-10 | original board | 2026.04.1 | 2025.07-linux4microchip-2026.04 | 0.99.53 (historical) | v2507 | `sel4test.uImage` `2c986076…` (then named `sel4-experimental.uImage`), **autoboot**, no typing | 118 passed / 49 disabled |
+| 2026-10-21 | original board | 2026.04.1 | 2025.07-linux4microchip-2026.04 | n/a | v2507 | Rust root task, network boot (developer-tree build, load `0x80260000`) | `Hello from Rust on seL4!`, 50 untyped regions |
+| 2026-10-28 | original board | 2026.04.1 | 2025.07-linux4microchip-2026.04 | n/a | v2507 | `sel4test.uImage` `2c986076…`, loaded into RAM by `scripts/board.py flash` (USB and `--lan`) | 118 passed / 49 disabled |
+| | | | | | | | |
 
 ## Where this came from
 

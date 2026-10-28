@@ -16,7 +16,12 @@ Legend: ✅ passed · ❌ failed · ⏳ not performed · ➖ not applicable
 | 2026-10-26 | `pf flash --baud 921600 --expect 'All is well in the universe'` (35.4 s) and `pf flash --no-reset --baud 115200` (268 s) | ✅ both passed |
 | 2026-10-26 | `pf flash` interrupted with Ctrl-C mid-transfer: exit 130, port back to 115200 and 16 ms latency; the next `pf flash` reset the board and passed | ✅ |
 | 2026-10-26 | `pf flash --lan` after the shared-console changes (regression check) | ✅ `118 tests passed` |
-| | `pf flash --console`, manual `loady` with picocom/`sb` or Tera Term | ⏳ not run on the board yet |
+| 2026-10-28 | `scripts/board.py flash` (replaces `pf flash`): USB at 1.5 Mbaud with a second shared client watching the U-Boot port (it saw the reset and the whole run) | ✅ `118 tests passed`, CRC-32 `eb98aed0`; block rate 125 KiB/s as before |
+| 2026-10-28 | `scripts/board.py flash --lan` | ✅ `118 tests passed`, `Bytes transferred = 3021688` |
+| 2026-10-28 | `scripts/board.py flash --baud 921600 --expect 'All is well in the universe'` | ✅ passed |
+| 2026-10-28 | `scripts/board.py flash` interrupted with SIGINT mid-transfer: exit 130; port back to 115200 with the low-latency flag cleared; the next flash passed | ✅ |
+| 2026-10-28 | `scripts/board.py send --hss '\r'` and `reset -y`, watched by a shared HSS client (`>>` prompts and the reboot seen) | ✅ |
+| | `board.py flash --console`, `flash --no-reset`, `console` interactively, manual `loady` with picocom/`sb` or Tera Term | ⏳ not run on the board with `board.py` (`--no-reset` passed with the former `pf flash` on 2026-10-26) |
 | 2026-10-22 | Clean rebuild after zeroing the board MAC in all sources (patch `kernel/0002` folded into `kernel/0001`) | ✅ `sel4test.uImage` byte-identical (`2c986076…`); privacy audit: no non-zero MAC anywhere |
 | | Autoboot fallback to Linux | ⏳ QEMU only so far (below) |
 
@@ -77,7 +82,7 @@ In every fallback case `boot-linux.scr` was loaded and sourced. It then failed o
 
 ## Installer
 
-Tool: [`scripts/test-installer.sh`](../scripts/test-installer.sh). Each scenario gets a fresh 64 MiB FAT image, attached with `udisksctl loop-setup` and mounted. The harness confirms each loop device is backed by its own temp file before use. Section 12 takes the two TALOS scripts from the repository's first revision out of git history. Run on 2026-10-21: **88 passed, 0 failed**.
+Tool: [`scripts/test-installer.sh`](../tests/test-installer.sh). Each scenario gets a fresh 64 MiB FAT image, attached with `udisksctl loop-setup` and mounted. The harness confirms each loop device is backed by its own temp file before use. Section 12 takes the two TALOS scripts from the repository's first revision out of git history. Run on 2026-10-21: **88 passed, 0 failed**.
 
 == 1. fresh install
 - dry run exits 0
@@ -187,7 +192,7 @@ The interrupted-installation scenarios use the installer's test-only `TALOS_TEST
 
 | Test | Why |
 |---|---|
-| Autoboot fallback to Linux on the board | Not done yet. See the README's [Not yet tested on hardware](../README.md#not-yet-tested-on-hardware). |
+| Autoboot fallback to Linux on the board | Not done yet. See the README's [Not yet tested on hardware](../docs/sd-card.md#not-yet-tested-on-the-board). |
 | Board run of the renamed autoboot script and of the pinned-checkout Rust image | The changes are a file name and banner (script) and kernel/toolchain origin (Rust); not yet booted. |
 | Installer `--apply` on a physical SD card | Deliberately not done. Disposable images only. |
 | Windows manual procedure | No Windows host. |

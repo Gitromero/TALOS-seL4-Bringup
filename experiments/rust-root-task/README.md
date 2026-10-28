@@ -1,8 +1,8 @@
-# Rust root task on seL4
+# Rust root task on seL4 (experiment)
 
-A `no_std` Rust program that runs as seL4's root task (the first and only user-space program the kernel starts) on the Discovery Kit. It prints two lines and suspends itself. It is a bring-up check that the Rust toolchain, rust-sel4 and this board's kernel work together.
+A `no_std` Rust program that runs as seL4's root task (the first and only user-space program the kernel starts) on the Discovery Kit. It prints two lines and suspends itself. It is a bring-up check that the Rust toolchain, rust-sel4 and this board's kernel work together, kept under `experiments/` because it is not part of the supported workflow: its build needs a locally built Docker image (below).
 
-**Verified on the Discovery Kit on 2026-10-21**, network-booted ([docs/NETBOOT.md](../docs/NETBOOT.md)):
+**Verified on the Discovery Kit on 2026-10-21**, network-booted ([network boot](../../docs/flashing.md#network-boot)):
 
 ```text
 ELF-loader started on (HART 1) (NODES 1)
@@ -23,7 +23,7 @@ TALOS: Rust root task running, 50 untyped regions available
 
 After that the console goes quiet: the task has suspended itself and nothing reads input. Reset the board to start again.
 
-> The image that produced this log was built with the same sources and settings from the developer's local seL4 checkout. `build.sh` below builds against the clean pinned checkout instead (kernel with the board MAC zeroed), which gives a slightly different image (load address `0x80262000` instead of `0x80260000`). **Boot it once and record the result** in [FIRMWARE_COMPATIBILITY.md](../docs/FIRMWARE_COMPATIBILITY.md#results-reported-by-teammates).
+> The image that produced this log was built with the same sources and settings from the developer's local seL4 checkout. `build.sh` below builds against the clean pinned checkout instead (kernel with the board MAC zeroed), which gives a slightly different image (load address `0x80262000` instead of `0x80260000`). **Boot it once and record the result** in [hardware.md](../../docs/hardware.md#results-reported-by-teammates).
 
 ## How it is put together
 
@@ -31,7 +31,7 @@ seL4 has no shell or login: at boot the kernel starts exactly one program, the r
 
 | Piece | Source | Built in |
 |---|---|---|
-| seL4 kernel + C elfloader | patched pinned checkout from [`scripts/build-sel4test.sh`](../scripts/build-sel4test.sh), configured by [`cmake/settings.cmake`](cmake/settings.cmake) with the same options (debug, printing on, single core, `UseRiscVOpenSBI=OFF`, `KernelPolarfireBoard=discovery`) | pinned toolchain image `trustworthysystems/camkes@sha256:77dcf9c7…` |
+| seL4 kernel + C elfloader | patched pinned checkout from [`scripts/build-sel4test.sh`](../../scripts/build-sel4test.sh), configured by [`cmake/settings.cmake`](cmake/settings.cmake) with the same options (debug, printing on, single core, `UseRiscVOpenSBI=OFF`, `KernelPolarfireBoard=discovery`) | pinned toolchain image `trustworthysystems/camkes@sha256:77dcf9c7…` |
 | Rust root task | [`rust/hello/src/main.rs`](rust/hello/src/main.rs), using [rust-sel4](https://github.com/seL4/rust-sel4) @ `7a2321f2d84310ba7a09fe7f5988e6dcecde3566` (`sel4`, `sel4-root-task`) | `sel4-rust-tutorial:latest` (nightly-2026-03-18 with `rust-src`, libclang) |
 | Rust target | [`rust/target-specs/riscv64gc-sel4-roottask.json`](rust/target-specs/riscv64gc-sel4-roottask.json), copied from rust-sel4's `support/targets/`. `riscv64gc` because the kernel enables the F and D extensions | |
 | Packaging | [`cmake/CMakeLists.txt`](cmake/CMakeLists.txt): the elfloader bundles `kernel.elf`, the board DTB and the Rust ELF; `make-uimage` wraps the elfloader for U-Boot `bootm`, exactly as for sel4test | pinned toolchain image |
@@ -47,35 +47,35 @@ How the pieces connect:
 
 You need:
 
-1. The patched sel4test checkout from a clean build: [`scripts/build-sel4test.sh "$WORK"`](../docs/BUILD_PROVENANCE.md#rebuilding) leaves it in `$WORK/sel4test` ([prerequisites](../docs/SETUP.md#docker-and-build-prerequisites-only-for-rebuilding-images)).
-2. The `sel4-rust-tutorial:latest` Docker image from the [seL4 Rust tutorial code](https://github.com/seL4/seL4-rust-tutorial-code) repository: clone it and run `make -C docker build`. That builds the image with your own UID, so files it writes into `rust-root-task/build/` belong to you.
+1. The patched sel4test checkout from a clean build: [`scripts/build-sel4test.sh "$WORK"`](../../docs/building.md#rebuild-imagessel4testuimage) leaves it in `$WORK/sel4test` ([prerequisites](../../docs/building.md#prerequisites)).
+2. The `sel4-rust-tutorial:latest` Docker image from the [seL4 Rust tutorial code](https://github.com/seL4/seL4-rust-tutorial-code) repository: clone it and run `make -C docker build`. That builds the image with your own UID, so files it writes into `experiments/rust-root-task/build/` belong to you.
 
-Then, from the repository root, with `WORK` set to the same work directory (the default from BUILD_PROVENANCE shown here):
+Then, from the repository root, with `WORK` set to the same work directory (the default from [building.md](../../docs/building.md) shown here):
 
 ```bash
 WORK=$HOME/talos-sel4test-build
-rust-root-task/build.sh "$WORK/sel4test"
+experiments/rust-root-task/build.sh "$WORK/sel4test"
 ```
 
 Add `--reconfigure` for a clean build.
 
-Output: `rust-root-task/build/images/rust-hello.uImage` (about 175 KiB). The first build downloads rust-sel4 and its crates (network access to GitHub and crates.io).
+Output: `experiments/rust-root-task/build/images/rust-hello.uImage` (about 175 KiB). The first build downloads rust-sel4 and its crates (network access to GitHub and crates.io).
 
 ## Boot
 
-**USB (default):** from the repository root, with the board's USB-C **#1** connected ([details](../docs/FLASHING.md#1-usb)):
+**USB (default):** from the repository root, with the board's USB-C **#1** connected ([details](../../docs/flashing.md)):
 
 ```bash
-scripts/pf flash rust-root-task/build/images/rust-hello.uImage --expect 'Hello from Rust on seL4!'
+scripts/board.py flash experiments/rust-root-task/build/images/rust-hello.uImage --expect 'Hello from Rust on seL4!'
 ```
 
-**Network:** the same with `scripts/pf flash --lan ...`, if Ethernet **#2** is connected and the TFTP setup in [docs/NETBOOT.md](../docs/NETBOOT.md) is done.
+**Network:** the same with `scripts/board.py flash --lan ...`, if Ethernet **#2** is connected ([network boot](../../docs/flashing.md#network-boot)).
 
 **SD card:** copy it next to `sel4test.uImage` on the card's FAT boot partition:
 
 ```bash
 BOOT=$(findmnt -nro TARGET -S LABEL=boot)
-cp rust-root-task/build/images/rust-hello.uImage "$BOOT/rust.uImage" && sync
+cp experiments/rust-root-task/build/images/rust-hello.uImage "$BOOT/rust.uImage" && sync
 ```
 
 Then at `RISC-V #`, one line at a time (`iminfo` must end with `Verifying Checksum ... OK`, `fdt header` must print `magic: 0xd00dfeed`):
@@ -92,4 +92,4 @@ The autoboot `boot.scr` keeps booting sel4test, so the card still works as befor
 
 ## Changing the program
 
-Edit [`rust/hello/src/main.rs`](rust/hello/src/main.rs), rerun `build.sh` (incremental), then run the `scripts/pf flash` command above again: it resets the board and boots the new image. `sel4::debug_println!` goes through `seL4_DebugPutChar` → kernel → SBI → the U-Boot/seL4 serial port.
+Edit [`rust/hello/src/main.rs`](rust/hello/src/main.rs), rerun `build.sh` (incremental), then run the `scripts/board.py flash` command above again: it resets the board and boots the new image. `sel4::debug_println!` goes through `seL4_DebugPutChar` → kernel → SBI → the U-Boot/seL4 serial port.
