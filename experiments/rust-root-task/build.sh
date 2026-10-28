@@ -8,15 +8,15 @@
 #   3. Package kernel + root task with the C elfloader and wrap it as a uImage.
 #
 # Usage:
-#   rust-root-task/build.sh <sel4test-checkout> [--reconfigure]
+#   experiments/rust-root-task/build.sh <sel4test-checkout> [--reconfigure]
 #
 #   <sel4test-checkout> is the patched checkout scripts/build-sel4test.sh
 #   leaves in <work-dir>/sel4test.
 #
-# Output: rust-root-task/build/images/rust-hello.uImage
+# Output: experiments/rust-root-task/build/images/rust-hello.uImage
 #
-# Requirements: docker, the pinned seL4 toolchain image (see docs/SETUP.md) and
-# a local sel4-rust-tutorial:latest image (see rust-root-task/README.md).
+# Requirements: docker, the pinned seL4 toolchain image (see docs/building.md) and
+# a local sel4-rust-tutorial:latest image (see experiments/rust-root-task/README.md).
 set -euo pipefail
 case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 

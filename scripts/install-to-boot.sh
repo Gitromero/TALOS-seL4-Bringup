@@ -188,7 +188,7 @@ done
 
 # ----------------------------------------------------------- restore mode
 if [ "$MODE" = restore ]; then
-    [ -e "$BACKUP" ] || die "no boot-linux.scr on the card; restore manually from repository boot/boot-linux.scr (see docs/TROUBLESHOOTING.md)"
+    [ -e "$BACKUP" ] || die "no boot-linux.scr on the card; restore manually from repository boot/boot-linux.scr (see docs/troubleshooting.md#restore-linux-boot)"
     stage_copy "$BACKUP" "$BOOT/boot.scr" "$(sha "$BACKUP")"
     [ "$APPLY" = 1 ] && note "Done. boot.scr is the Linux script again. Unmount/eject before removing the card." \
                      || note "Dry run complete. Nothing was changed."
@@ -200,7 +200,7 @@ fi
 if [ -e "$BACKUP" ]; then
     note "Backup boot-linux.scr already exists; it will not be touched."
 elif is_talos_script "$BOOT/boot.scr"; then
-    die "boot.scr is already a TALOS script but no boot-linux.scr backup exists; restore the Linux script first (docs/TROUBLESHOOTING.md#restore-linux-boot)"
+    die "boot.scr is already a TALOS script but no boot-linux.scr backup exists; restore the Linux script first (docs/troubleshooting.md#restore-linux-boot)"
 else
     note "Backing up current boot.scr as boot-linux.scr:"
     stage_copy "$BOOT/boot.scr" "$BACKUP" "$(sha "$BOOT/boot.scr")"

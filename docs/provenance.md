@@ -4,7 +4,7 @@ This page records where every shipped file came from and how it was checked. It 
 
 - **Verified from files**: hashes, sizes, headers and diffs produced by commands run against the files (first at repository assembly on 2026-10-20, rechecked on 2026-10-21).
 - **Observed on the board**: serial-console output from the Discovery Kit.
-- **Historical record**: from the original bring-up log ([BRINGUP_GUIDE.md](BRINGUP_GUIDE.md)) and handoff ([context](../context/SEL4_BRINGUP_CONTEXT.md)), which cannot be re-checked from files.
+- **Historical record**: from the original bring-up log ([bring-up guide](../history/bringup-guide.md)) and handoff ([bring-up log](../history/bringup-log.md)), which cannot be re-checked from files.
 
 ## Shipped binaries
 
@@ -84,7 +84,7 @@ ninja
 
 Resulting cache values: `KernelPlatform=polarfire`, `KernelSel4Arch=riscv64`, `KernelPolarfireBoard=discovery`, `CMAKE_BUILD_TYPE=Debug`, `KernelDebugBuild=ON`, `KernelPrinting=ON`, `KernelMaxNumNodes=1`, `Sel4testHaveCache=ON`, `Sel4testHaveTimer=OFF`. All 11 generated kernel platform configuration files are byte-identical to those of the original developer build.
 
-The [Rust root task](../rust-root-task/README.md) reuses the same patched checkout, kernel options and toolchain image.
+The [Rust root task](../experiments/rust-root-task/README.md) reuses the same patched checkout, kernel options and toolchain image.
 
 ## Board and memory facts
 
@@ -118,24 +118,7 @@ The repository's first revision shipped `images/sel4.uImage` (SHA-256 `29d926e4â
 
 ## Rebuilding
 
-Prerequisites (Docker, `repo`, disk space, the pinned toolchain image) are listed in [SETUP.md](SETUP.md#docker-and-build-prerequisites-only-for-rebuilding-images).
-
-The work directory must be new or empty. From the repository root:
-
-```bash
-WORK=$HOME/talos-sel4test-build
-scripts/build-sel4test.sh "$WORK"
-sha256sum "$WORK/out/sel4test.uImage"
-grep sel4test.uImage images/SHA256SUMS
-```
-
-Outputs land in `$WORK/out/`; the two hashes must match. To rebuild **and** copy the results into `images/` and `boot/`, use another empty directory:
-
-```bash
-scripts/build-sel4test.sh "$HOME/talos-sel4test-build-2" --update-repo
-```
-
-The script runs `repo init -u https://github.com/seL4/sel4test-manifest.git -b 11c9090dâ€¦` and `repo sync -c`, verifies the manifest and every project SHA, applies the two patches, and builds as above. The patched checkout stays in `<work-dir>/sel4test`, which `rust-root-task/build.sh` and `scripts/make-source-archive.sh` take as input. See [reports/BUILD_REPORT.md](../reports/BUILD_REPORT.md).
+How to rebuild the image and check it against the shipped hash: [building.md](building.md#rebuild-imagessel4testuimage).
 
 ## Privacy and publication notes
 

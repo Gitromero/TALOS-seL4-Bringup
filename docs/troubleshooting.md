@@ -2,7 +2,7 @@
 
 Each entry says whether the advice comes from **what we saw on the board** or is **general guidance we have not tested on this board**. Always save the full serial log of a failure. It is the most useful thing to share with the team.
 
-Basics first: **115200 8N1**, no flow control, and the right port (see [SETUP.md](SETUP.md#serial-console)).
+Basics first: **115200 8N1**, no flow control, and the right port ([serial ports](getting-started.md#3-serial-ports)). On Linux, `scripts/board.py status` checks the USB connection, the four channels, who holds each port and whether HSS answers.
 
 ---
 
@@ -14,11 +14,11 @@ Basics first: **115200 8N1**, no flow control, and the right port (see [SETUP.md
 
 ## Only one serial port on Linux
 
-Seen on the board: the kernel binds only one of the FT4232H's channels (interface 2, the U-Boot/seL4 console), so a single `/dev/ttyUSB0` appears. Fix: `sudo sh -c 'echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'`. Details: [SETUP.md](SETUP.md#serial-console-on-a-linux-host).
+Seen on the board: the kernel binds only one of the FT4232H's channels (interface 2, the U-Boot/seL4 console), so a single `/dev/ttyUSB0` appears. Fix: `scripts/board.py install-udev` (once), or `sudo sh -c 'echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'` until the next unplug. Details: [getting started](getting-started.md#linux).
 
 ## Console looks frozen, or output has gaps
 
-- **Two programs on one port.** Seen on the board: with `picocom` open on the U-Boot port while a script also read it, each got only part of the output. Close one. Writing to a port from a script while `picocom` reads it is fine.
+- **Two programs on one port.** Seen on the board: with `picocom` open on the U-Boot port while a script also read it, each got only part of the output. Close one, and open consoles with `scripts/board.py console`, which shares the port ([why](flashing.md#shared-consoles)). `scripts/board.py ports` shows who holds each port.
 - **seL4 is done.** After sel4test's summary, or after the Rust root task prints its lines, nothing on the board reads input. U-Boot is gone and seL4 has no shell. Reset the board.
 
 ## Linux boots instead of seL4
@@ -58,7 +58,7 @@ There is no keypress escape once the script runs. To get back to Linux, use a ho
 
 ## Getting to the `RISC-V #` prompt
 
-Needed for manual boot, and for loading images by hand [over USB](FLASHING.md#by-hand) or [the network](NETBOOT.md). (`scripts/pf flash` gets there by itself.) Press a key while U-Boot shows `Hit any key to stop autoboot` (the board's `bootdelay` is 2 seconds). On the board, from `picocom` on Linux, this stopped U-Boot at `RISC-V #` before `boot.scr` ran. During the original bring-up on Windows, interrupting the countdown was not reliable, which is why the first scripts only staged the image.
+Needed for [manual boot](sd-card.md#manual-boot-from-the-u-boot-prompt) and for [loading images by hand](flashing.md#manual-procedures). (`scripts/board.py flash` gets there by itself.) Press a key while U-Boot shows `Hit any key to stop autoboot` (the board's `bootdelay` is 2 seconds). On the board, from `picocom` on Linux, this stopped U-Boot at `RISC-V #` before `boot.scr` ran. During the original bring-up on Windows, interrupting the countdown was not reliable, which is why the first scripts only staged the image.
 
 - Check you're on the **U-Boot** port, not the HSS port.
 - If HSS doesn't hand over to U-Boot, typing `sdcard` then `boot` on the **HSS** console worked during the original bring-up.
@@ -103,7 +103,7 @@ fdt header
 | You see | Meaning and fix |
 |---|---|
 | `Device tree not found or missing FDT support` then `### ERROR ### Please RESET the board ###` | Seen on the board: `bootm 0x8e000000` without the FDT argument. seL4 did not run. Reset, `load` again, and use `bootm 0x8e000000 - ${fdtcontroladdr}`. Mind the `-` in the middle. |
-| `Wrong Image Type for bootm command` / `ERROR -91: can't get kernel image!` | Seen on the board: the board had been reset after the image was loaded, so RAM no longer held it. `load` (or `pf flash`) again. |
+| `Wrong Image Type for bootm command` / `ERROR -91: can't get kernel image!` | Seen on the board: the board had been reset after the image was loaded, so RAM no longer held it. `load` (or `scripts/board.py flash`) again. |
 | `Failed to reserve memory for fdt at …` / `FDT creation failed! hanging...` | U-Boot was told to use the FDT in place (`fdt_high` all ones) and refused. Reproduced under QEMU with U-Boot 2025.10, not seen on the board. Reset, then `setenv fdt_high` before `bootm` (session only). |
 
 ## seL4 starts but output stops or tests fail
@@ -114,17 +114,25 @@ fdt header
 
 ## U-Boot, HSS or FPGA version mismatch
 
-What we verified is listed in [FIRMWARE_COMPATIBILITY.md](FIRMWARE_COMPATIBILITY.md): U-Boot `2025.07-linux4microchip-2026.04`, Linux4Microchip `2026.04.1`, reference design RTL `v2507`, HSS 0.99.53 (historical record). Avnet's guide installs the *latest* releases, which may differ.
+What we verified is listed in [hardware.md](hardware.md#8-firmware-compatibility): U-Boot `2025.07-linux4microchip-2026.04`, Linux4Microchip `2026.04.1`, reference design RTL `v2507`, HSS 0.99.53 (historical record). Avnet's guide installs the *latest* releases, which may differ.
 
 - U-Boot prints its version at startup. HSS prints its version on the HSS console. Note both.
 - Memory layout matters. The image runs at `0x80640000` and assumes seL4 can use `0x80000000–0x84000000` and `0x8a000000–0x92000000`, with the first 2 MiB reserved for firmware. A firmware release that reserves different memory, or a different `scriptaddr`, could break things.
 - If the latest release fails, try the tested Linux4Microchip **2026.04.1** Discovery Kit image and the matching reference design from the official release pages, **following the official flashing instructions**. Exact tag names were not verified for this document. Don't flash unofficial firmware.
 
-## Loading images (`pf flash`)
+## Loading images (`board.py flash`)
 
-- USB transfer failures, `loady` messages, a console stuck at the wrong speed: [FLASHING.md](FLASHING.md#troubleshooting).
-- Network (`pf flash --lan`): TFTP timeouts, firewall rules and server errors: [NETBOOT.md](NETBOOT.md#troubleshooting).
-- A console with gaps, or `is open in another program`: [SHARED_CONSOLE.md](SHARED_CONSOLE.md#troubleshooting).
+`flash` stops at the first problem with a message and an exit code: `2` means something on this computer (image, ports, TFTP server), `3` the board or U-Boot, `4` a timeout after boot. The full console log is in `logs/flash-*.log`. Symptoms and fixes for transfers, ports, consoles stuck at the wrong speed and network boot: [flashing.md](flashing.md#troubleshooting).
+
+## Build failures
+
+| You see | Meaning and fix |
+|---|---|
+| `ERROR: repo not found` / `docker not found` from `build-sel4test.sh` | Install the [prerequisites](building.md#prerequisites). |
+| `permission denied ... docker.sock` | Your user isn't in the `docker` group: `sudo usermod -aG docker "$USER"`, then log in again. |
+| `ERROR: <dir> exists and is not empty` | The build needs a new or empty directory each time. |
+| A rebuilt image with a different SHA-256 | Something differs from the pinned inputs (patches, manifest, container digest). Don't copy it into `images/`: it is a new, unverified image. Compare with [reports/BUILD_REPORT.md](../reports/BUILD_REPORT.md). |
+| `tests/run.sh` fails | Read the failing test's message: repository checks name the file and line to fix. The suite needs no board, so failures are real regressions. |
 
 ## Restore Linux boot
 

@@ -9,8 +9,9 @@ from urllib.parse import unquote
 
 from paths import REPO
 
-# Records of what happened, kept as written; they may name retired tools.
-HISTORICAL = ("history/", "reports/")
+# Records of what happened, kept as written; they may name retired tools. So
+# may docs/tooling.md, which explains why they were replaced.
+HISTORICAL = ("history/", "reports/", "docs/tooling.md")
 RETIRED = ["scripts/pf", "pf flash", "pf status", "pf console", "usb-flash.sh", "network-flash.sh",
            "serial-share.py", "SETUP.md", "FLASHING.md", "NETBOOT.md", "SHARED_CONSOLE.md",
            "PERIPHERALS.md", "BRINGUP_GUIDE.md", "BUILD_PROVENANCE.md", "ARTIFACT_INTEGRITY.md",
@@ -101,6 +102,12 @@ class Repository(unittest.TestCase):
             if len(host) >= 4 and re.search(rf"\b{re.escape(host)}\b", text):
                 problems.append(f"{path}: host name")
         self.assertEqual(problems, [])
+
+    def test_main_repository_is_not_named(self):
+        # Owner decision (README, "Publication status"): refer to it only as
+        # "the main TALOS repository".
+        name = "".join(["And", "uril"])
+        self.assertEqual([p for p, text in text_files() if name.lower() in text.lower()], [])
 
     def test_shipped_files_match_their_hashes(self):
         for line in (REPO / "images" / "SHA256SUMS").read_text().splitlines():

@@ -8,7 +8,6 @@ and prints a configurable boot log after `bootm`.
 import binascii
 import socket
 import threading
-import time
 import zlib
 
 import paths  # noqa: F401  (puts scripts/ on sys.path)
@@ -147,7 +146,7 @@ class FakeUBoot(threading.Thread):
         if size is not None:
             self.out(f"## Total Size      = 0x{size:08x} = {size} Bytes\r\n".encode())
         if baud != 115200:
-            self.out(f"## Switch baudrate to 115200 bps and press ESC ...\r\n".encode())
+            self.out(b"## Switch baudrate to 115200 bps and press ESC ...\r\n")
             while b"\x1b" not in self.rx:
                 self.read()
             self.rx = self.rx.split(b"\x1b", 1)[1]

@@ -74,7 +74,7 @@ Develop and validate a fully automatic seL4 U-Boot boot script. The current work
 
 ## Verified at repository assembly (2026-10-20)
 
-Checked read-only against the developer workstation and the working seL4 SD card. Full detail: [`docs/BUILD_PROVENANCE.md`](../docs/BUILD_PROVENANCE.md).
+Checked read-only against the developer workstation and the working seL4 SD card. Full detail: [`docs/BUILD_PROVENANCE.md`](../docs/provenance.md).
 
 ### Artifacts
 
@@ -170,8 +170,18 @@ Checked read-only against the developer workstation and the working seL4 SD card
 - **Verified on the board (2026-10-26) with those tools:** `pf flash` with a second shared client watching (23.6 s transfer, 118 passed; the watcher saw everything); `--baud 921600 --expect 'All is well in the universe'`; `--no-reset --baud 115200` (268 s); Ctrl-C mid-transfer (exit 130, port back to 115200/16 ms, next `pf flash` passed); `pf flash --lan` regression after the broker change (passed).
 - **Not run on the board yet:** `pf flash --console`, the manual picocom/`sb` and Tera Term YMODEM steps in `docs/FLASHING.md`. TFTP is still faster (a few seconds) when Ethernet is available.
 
-### Update 2026-10-27: Anduril-TALOS LED image over USB
+### Update 2026-10-27: TALOS LED image over USB
 
-- **Built:** Anduril-TALOS `nix build .#c-led-image-mpfs-disco-kit` (at `beddb8b`). On a Linux host the Nix sandbox has no `/usr/bin/env`, so the kernel's `cpp_gen.sh` failed; adding `patchShebangs source` after the staged sources in Anduril-TALOS `nix/c-system.nix` fixed it (not committed there yet). `image.elf` (SHA-256 `a938addc…`, load/entry `0x80520000`) was wrapped with the kernel tree's `make-uimage`, as for sel4test: 1,723,720 bytes, SHA-256 `e86f369f…`.
-- **Verified on the board (2026-10-27, RAM only):** `scripts/pf flash <talos-led.uImage> --expect 'TALOS_LED partition=\d+ led=3'`: CRC32 `88fc1a4e` matched, elfloader on hart 1 used the DTB bundled in its CPIO, CapDL loader done, `TALOS_CLOCK ready`, partitions 1–3 `pm ready`, clock IRQs and `TALOS_LED` lines for LED1/2/3. So the TALOS image boots through U-Boot `bootm` too, not only as an HSS payload as Anduril-TALOS `docs/hardware.md` describes.
+- **Built:** the main TALOS repository's `nix build .#c-led-image-mpfs-disco-kit` (at `beddb8b`). On a Linux host the Nix sandbox has no `/usr/bin/env`, so the kernel's `cpp_gen.sh` failed; adding `patchShebangs source` after the staged sources in that repository's `nix/c-system.nix` fixed it (not committed there yet). `image.elf` (SHA-256 `a938addc…`, load/entry `0x80520000`) was wrapped with the kernel tree's `make-uimage`, as for sel4test: 1,723,720 bytes, SHA-256 `e86f369f…`.
+- **Verified on the board (2026-10-27, RAM only):** `scripts/pf flash <talos-led.uImage> --expect 'TALOS_LED partition=\d+ led=3'`: CRC32 `88fc1a4e` matched, elfloader on hart 1 used the DTB bundled in its CPIO, CapDL loader done, `TALOS_CLOCK ready`, partitions 1–3 `pm ready`, clock IRQs and `TALOS_LED` lines for LED1/2/3. So the TALOS image boots through U-Boot `bootm` too, not only as an HSS payload as that repository's `docs/hardware.md` describes.
 - **Not checked:** the physical LEDs (nobody at the board) and the 250/500/750 ms periods over a longer run. Console lines from different partitions can interleave mid-line.
+
+### Update 2026-10-28: repository cleanup and `scripts/board.py`
+
+- **Tools:** `scripts/pf`, `usb-flash.sh` and `network-flash.sh` are replaced by one command, `scripts/board.py` (`status`, `ports`, `flash [--lan]`, `console [--hss|--uart3]`, `send`, `reset`, `tftp`, `install-udev`), with its logic in `scripts/polarfire/` (ports, serial_share, uboot, ymodem, tftp). The U-Boot sequence, commands and timings are unchanged. Logs are now `logs/flash-<usb|lan>-<time>.log` and end with the result line. `serial-share.py` became `scripts/polarfire/serial_share.py`; the broker no longer dies when a control client connects on a port without `TIOCGSERIAL`, and is launched with `posix_spawn`. Every remaining tool prints usage on `--help`. Rationale and conventions: `docs/tooling.md`.
+- **Layout:** `tests/` (new offline suite, `tests/run.sh`, plus the installer test), `experiments/rust-root-task/`, `history/` (this log, the bring-up guide, the first image's build wrapper). Docs consolidated: `getting-started`, `sd-card`, `flashing` (USB, network, shared consoles), `building`, `hardware` (peripherals, serial channels, firmware), `troubleshooting`, `tooling`, `provenance`.
+- **Verified on the board (2026-10-28, RAM only, Linux host):** `board.py flash` over USB (with a second shared client watching) and `--lan`, both `118 tests passed`, CRC-32 `eb98aed0`; `--baud 921600 --expect 'All is well in the universe'`; SIGINT mid-transfer → exit 130, port restored, next flash passed; `send --hss` and `reset -y`. `images/sel4test.uImage` is unchanged (`2c986076…`).
+- **Offline:** `tests/run.sh`: 52 Python tests and shellcheck pass. `tests/test-installer.sh` was not run (no `mkfs.vfat` on this host). `build-sel4test.sh` was not re-run (no `repo` launcher on this host); only its argument handling changed.
+- **Not run on the board yet:** `flash --console`, `flash --no-reset` (passed with the former `pf flash`), interactive `console`, the manual picocom/Tera Term YMODEM steps, autoboot fallback to Linux.
+- **Publication note:** this log's 2026-10-27 entry named the main TALOS repository in the pushed commit `3d61dcc`; the working copy now refers to it only as "the main TALOS repository". Publishing from a fresh history (README, "Publication status") removes it.
+

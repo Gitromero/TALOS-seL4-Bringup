@@ -9,13 +9,9 @@ import tempfile
 import threading
 import time
 import unittest
-import warnings
 
 import paths  # noqa: F401
 from polarfire import HOST, Failure, ports, serial_share, tftp
-
-# ensure_broker() starts the broker detached and never waits for it, by design.
-warnings.filterwarnings("ignore", r"subprocess \d+ is still running", ResourceWarning)
 
 
 class Ports(unittest.TestCase):
@@ -46,6 +42,7 @@ class Ports(unittest.TestCase):
             self.assertEqual(ports.holders(f.name), [])
             ports.require_free(f.name)
             holder = subprocess.Popen(["sh", "-c", f"exec 3<'{f.name}'; exec sleep 30"])
+            self.addCleanup(holder.wait)
             self.addCleanup(holder.kill)
             for _ in range(50):
                 if ports.holders(f.name):

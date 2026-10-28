@@ -1,196 +1,118 @@
-# Setup details (host side)
+# Getting started
 
-This page adds host-specific detail to the [root README](../README.md). The README is still the procedure to follow.
+From a new board and a new computer to the first verified seL4 run. Board setup works from any host OS. The board tool, `scripts/board.py`, needs a Linux host.
 
-**What has been tested.** The original bring-up used a **Windows** PC for the serial consoles (COM4/COM5) and a **Linux Mint 22.3** host to mount the SD card's FAT boot partition and copy files. On 2026-10-21 the same Linux Mint host was used as the serial console for the network-boot and Rust sessions ([below](#serial-console-on-a-linux-host)). The Linux `.wic` flashing instructions are standard equivalents that **the team has not tested on this board**.
+**What has been tested.** The original bring-up used a **Windows** PC for the serial consoles and a **Linux Mint 22.3** host for the SD card. Since 2026-10-21 a Linux host (Linux Mint 22.3, and Debian 13) has been the serial console and the host for every `board.py` command.
 
-## Official base setup: where to stop
+## 1. Official board setup
 
-Use Avnet's [PolarFire SoC Discovery Kit QuickStart](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/microchip-polarfire-soc-dk/README.md):
+Follow Avnet's [PolarFire SoC Discovery Kit QuickStart](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/microchip-polarfire-soc-dk/README.md) up to the point shown below, and stop there:
 
 | Avnet section | Do it? | Notes |
 |---|---|---|
 | 1 Introduction, 2 Requirements | Yes | You need FlashPro Express (Avnet points to the v2024.2 "Programming and Debug" download), a serial terminal and an SD-card flasher. |
 | 3 Hardware Setup | Yes | USB-C to connector **#1**, Ethernet to connector **#2**. |
 | 4 Software Setup: *Update FPGA* | Yes | Programs the reference design `.job`. This changes the board. Follow the official steps and pick the file for the Discovery Kit. |
-| 4 Software Setup: *Flash Linux Image* | Yes | Official Linux4Microchip `.wic` onto your blank card. |
-| 5 Device Setup, Steps 1–3 | Yes | Serial settings 115200/8/1/None. See the three ports. |
-| 5 Step 4 onward, Sections 6–9 | **No** | Login, `pip install`, IoTConnect onboarding and demos are not part of TALOS bring-up. |
+| 4 Software Setup: *Flash Linux Image* | Yes | Official Linux4Microchip `.wic` onto your card ([on Linux](sd-card.md#flashing-the-official-linux-image)). |
+| 5 Device Setup, Steps 1–3 | Yes | Serial settings 115200/8/1/None. Three serial ports appear. |
+| 5 Step 4 onward, Sections 6–9 | **No** | Login, `pip install`, IoTConnect onboarding and demos are not part of this project. |
 
-Avnet's "latest" FPGA and Linux releases may be newer than what we tested (see [FIRMWARE_COMPATIBILITY.md](FIRMWARE_COMPATIBILITY.md)). Write down which versions you installed.
+The verified runs used Linux4Microchip **2026.04.1**, U-Boot **2025.07-linux4microchip-2026.04** and FPGA reference design **v2507**. Avnet's guide installs the latest releases, which may be newer and are **untested** ([firmware compatibility](hardware.md#8-firmware-compatibility)). Write down which versions you installed.
 
-## Flashing the Linux `.wic` image
+Before continuing, confirm that the board boots the official Linux and that you can see its serial output.
 
-**Windows (Avnet's method):** extract the `.wic.gz` and flash the `.wic` with Balena Etcher.
+## 2. Get this repository
 
-**Linux host (not tested by the team):** Balena Etcher also runs on Linux and is the safest choice, because it only offers removable drives. A command-line alternative, **which destroys the target device**:
-
-```bash
-lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINTS    # identify the SD card by SIZE/MODEL. Check twice.
-WIC=mchp-base-image-mpfs-disco-kit.rootfs-XXXXXXXXXXXXXX.wic   # the exact file name you downloaded, minus .gz
-gunzip -k "$WIC.gz"
-sudo umount /dev/sdX?* 2>/dev/null            # sdX = YOUR card, never your system disk
-sudo dd if="$WIC" of=/dev/sdX bs=4M conv=fsync status=progress
-sync
-```
-
-`/dev/sdX` is a placeholder. On some machines the card shows up as `/dev/mmcblk0`, on others as `/dev/sda`, and a wrong guess can wipe a disk.
-
-## Mounting the FAT boot partition
-
-After flashing, the card has (on the image we tested) a ~64 MiB **vfat** partition labelled **`boot`** and a large **ext4** partition labelled **`root`**. Only the `boot` partition is used. On the verified card it contained:
-
-```text
-boot.scr   fitImage   uboot.env           (official image)
-boot-linux.scr   sel4test.uImage          (added by our procedure; boot.scr replaced)
-```
-
-**Linux:** most desktops auto-mount it under `/media/<you>/boot`. This prints where it is mounted (nothing means not mounted):
+> **Placeholder:** `https://github.com/<TEAM-ORG>/TALOS-seL4-Bringup` is **not a real URL yet**. Use the link your team shares once the repository is published.
 
 ```bash
-findmnt -nro TARGET -S LABEL=boot
-```
-
-Otherwise, mount it by hand (`sdX` is your card, found with `lsblk`):
-
-```bash
-lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINTS
-udisksctl mount -b /dev/sdX1        # the vfat partition labelled boot; prints the mount point
-sync                                # after copying files as in the README
-udisksctl unmount -b /dev/sdX1
-udisksctl power-off -b /dev/sdX     # optional, then remove the card
-```
-
-**Windows:** the `boot` partition appears as a drive letter. Windows cannot read the ext4 partition and may ask to format it. **Always click Cancel.** Turn on *View → File name extensions* so you can see you are creating `boot.scr` and not `boot.scr.scr`. Eject with *Safely Remove Hardware*.
-
-**Before copying, always** check that the folder contains both `boot.scr` and `fitImage`. If it doesn't, you have the wrong drive or partition.
-
-## Verify the downloaded files
-
-Linux/macOS, from the repository root:
-
-```bash
+git clone https://github.com/<TEAM-ORG>/TALOS-seL4-Bringup.git   # placeholder URL
+cd TALOS-seL4-Bringup
 sha256sum -c images/SHA256SUMS
 ```
 
-Windows PowerShell, from the repository root:
+All three lines must say `OK`. On Windows PowerShell, from the repository root:
 
 ```powershell
 Get-FileHash images\sel4test.uImage, boot\boot-auto.scr, boot\boot-linux.scr -Algorithm SHA256
 Get-Content images\SHA256SUMS
 ```
 
-Compare the hashes by eye. PowerShell prints them in upper case, which is fine. After copying, you can hash the files **on the card** the same way, and they must match too.
+Compare the hashes by eye (PowerShell prints them in upper case, which is fine). The repository's `.gitattributes` marks these files as binary so Git won't change their line endings; even so, a mismatch means **don't use the file**. Checksums detect corruption, but they don't prove who made a file ([what they prove](building.md#checksums-and-authenticity)).
 
-> If you cloned with Git on Windows, the repository's `.gitattributes` marks these files as binary so Git won't change line endings. Even so, a hash mismatch means **don't use the file**.
-
-## Serial console
+## 3. Serial ports
 
 Settings everywhere: **115200 baud, 8 data bits, no parity, 1 stop bit, no flow control**.
 
-The board's USB-C connector **#1** goes to an on-board FTDI **FT4232H** (it identifies as `Microsemi Embedded FlashPro5`, USB ID `1514:2008`). It has four channels: one for JTAG programming and three UARTs.
+USB-C connector **#1** goes to an FTDI **FT4232H** on the board (it identifies as `Microsemi Embedded FlashPro5`, USB ID `1514:2008`) with four channels:
 
-| Console | What you see | Windows (one PC) | Linux | FT4232H channel |
+| Channel | Console | What you see | Windows (one PC) | Linux name (udev rule) |
 |---|---|---|---|---|
-| JTAG | Not a console | not shown | `/dev/ttyUSB0` | interface 0 |
-| HSS (firmware) | Hart Software Services banner at power-on; `>>` prompt; accepts `sdcard`, `boot` | COM4 | `/dev/ttyUSB1` | interface 1 |
-| U-Boot / Linux / seL4 | U-Boot, `RISC-V #`, Linux login, seL4 and test output | COM5 (the middle-numbered port, matching Avnet's advice) | `/dev/ttyUSB2` | interface 2 |
-| Third UART | Silent in this procedure | n/a | `/dev/ttyUSB3` | interface 3 |
+| interface 0 | JTAG | not a console | not shown | `/dev/polarfire-jtag` |
+| interface 1 | **HSS** (firmware) | Hart Software Services banner at power-on; `>>` prompt | COM4 | `/dev/polarfire-hss` |
+| interface 2 | **U-Boot / Linux / seL4** | U-Boot, `RISC-V #`, Linux login, seL4 and test output | COM5 (the middle-numbered port) | `/dev/polarfire-uboot` |
+| interface 3 | Third UART | silent so far | not used | `/dev/polarfire-uart3` |
 
-COM and `ttyUSB` numbers are assigned per computer and can change. The interface number is fixed by the hardware, so on Linux use the stable names under `/dev/serial/by-id/`, which end in `-if01-port0`, `-if02-port0` and so on.
+COM and `ttyUSB` numbers are assigned per computer and change, so the tools never use them. More about the channels and reset: [hardware.md](hardware.md#7-serial-channels-and-board-reset).
 
-**One program per port.** If two programs have the same port open (two terminals, or a terminal and a script), Linux hands each incoming byte to only one of them, so both see gaps and the console looks frozen or garbled. Close one, or open every console with `scripts/pf console` (or `scripts/serial-share.py console <port>`), which shares the port between any number of consoles, the flash scripts and AI agents ([SHARED_CONSOLE.md](SHARED_CONSOLE.md)).
+### Windows or macOS
 
-### Serial console on a Linux host
+Use any serial terminal (PuTTY, Tera Term; `screen` on macOS) on the HSS and U-Boot ports. That is all the SD-card procedure needs. `scripts/board.py` does not run on these systems.
 
-Verified on Linux Mint 22.3 (kernel 7.0) with `picocom`.
+### Linux
 
-**1. Permission.** Your user must be in the `dialout` group (`groups` lists it). If not: `sudo usermod -aG dialout "$USER"`, then log out and back in.
+Verified on Linux Mint 22.3 and Debian 13.
 
-**2. Make all three UARTs appear.** Out of the box, the kernel's `ftdi_sio` driver binds **only interface 2** of this board's FT4232H, so a single `/dev/ttyUSB0` appears, and it is the U-Boot/seL4 console, not the first port. To bind every channel, tell `ftdi_sio` about the board's USB ID:
+1. **Permission.** Your user must be in the `dialout` group (`groups` lists it). If not: `sudo usermod -aG dialout "$USER"`, then log out and back in.
+2. **Python 3.8 or newer** (`python3 --version`). `board.py` uses only the standard library.
+3. **Bind all four channels and get stable names.** Out of the box, the kernel's `ftdi_sio` driver binds **only interface 2** of this board's FT4232H, so a single `/dev/ttyUSB0` appears (the U-Boot console). The repository's udev rule binds every channel each time the board is plugged in and adds the `/dev/polarfire-*` names. Install it once (asks for your password; it also refreshes a board that is already plugged in):
 
-```bash
-sudo sh -c 'echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'
-ls /dev/serial/by-id/          # now four entries: ...-if00-port0 through ...-if03-port0
-```
+   ```bash
+   scripts/board.py install-udev
+   ```
 
-The `new_id` file is under **`/sys/bus/usb-serial/`**. `/sys/bus/usb/drivers/ftdi_sio/` has no `new_id`, and writing there fails with `Permission denied` even as root. The binding lasts until the board is unplugged or the computer restarts; run the command again after that.
+   By hand, the same thing is:
 
-Binding also claims interface 0, the JTAG channel, as `/dev/ttyUSB0`. That is harmless for the consoles. If FlashPro programming from this computer then fails to find the board, release it with `echo <usb-path>:1.0 | sudo tee /sys/bus/usb/drivers/ftdi_sio/unbind`, where `<usb-path>` is the board's device, e.g. `1-1` (`ls /sys/bus/usb/drivers/ftdi_sio/`). This last step has **not** been needed or tested yet.
+   ```bash
+   sudo cp host/udev/99-polarfire-discovery.rules /etc/udev/rules.d/
+   sudo udevadm control --reload
+   ls -l /dev/polarfire-*          # after unplugging and replugging the board
+   ```
 
-### Stable port names
+   Without the rule, `sudo sh -c 'echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'` binds all channels until the next unplug (the file is under **`/sys/bus/usb-serial/`**; `/sys/bus/usb/drivers/ftdi_sio/` has no `new_id`). The tools then find the ports as `/dev/serial/by-id/*FlashPro5*-ifNN-port0`.
 
-[`host/udev/99-polarfire-discovery.rules`](../host/udev/99-polarfire-discovery.rules) does step 2 automatically every time the board is plugged in, and adds names that never change:
+   Binding also claims interface 0, the JTAG channel. That is harmless for the consoles. If FlashPro programming from this computer then fails to find the board, release it with `echo <usb-path>:1.0 | sudo tee /sys/bus/usb/drivers/ftdi_sio/unbind` (`<usb-path>` as listed by `ls /sys/bus/usb/drivers/ftdi_sio/`, e.g. `1-1`). This has **not** been needed or tested yet.
 
-| Name | Channel |
-|---|---|
-| `/dev/polarfire-jtag` | interface 0, JTAG |
-| `/dev/polarfire-hss` | interface 1, HSS console |
-| `/dev/polarfire-uboot` | interface 2, U-Boot / Linux / seL4 console |
-| `/dev/polarfire-uart3` | interface 3, third UART |
+4. **Optional, for `flash --lan` only:** Docker (your user in the `docker` group) and one firewall rule ([network boot](flashing.md#network-boot)).
 
-Install once (needs your password): `scripts/pf install-udev`, which also refreshes a board that is already plugged in. By hand:
+## 4. First run
 
-```bash
-sudo cp host/udev/99-polarfire-discovery.rules /etc/udev/rules.d/
-sudo udevadm control --reload
-ls -l /dev/polarfire-*          # after unplugging and replugging the board
-```
-
-Why it matters: after the `new_id` command, `ttyUSB` numbers depend on the order the channels were bound. On the team's lab machine the U-Boot console stayed `/dev/ttyUSB0` and HSS became `/dev/ttyUSB2` until the next replug. `scripts/pf` and the flash scripts ([FLASHING.md](FLASHING.md)) use these names when they exist.
-
-**3. Open the consoles**, one terminal each (or `picocom -b 115200 /dev/polarfire-uboot` with the udev rule). HSS:
+With the board powered and USB-C #1 connected:
 
 ```bash
-picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if01-port0
+scripts/board.py status
 ```
 
-U-Boot / seL4:
+Every line should be `[ok]`: the board on USB, all 4 channels bound, the udev rule installed, the four ports present, and `HSS answers Enter with '>>'`. Then open the U-Boot console in one terminal:
 
 ```bash
-picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if02-port0
+scripts/board.py console          # exit: Ctrl-a Ctrl-x
 ```
 
-Exit picocom with `Ctrl-a Ctrl-x`. Enter sends a carriage return, which U-Boot accepts. `screen <port> 115200` works too (exit: `Ctrl-a k`).
-
-On the verified host, the HSS port answered Enter with `>>`, and the U-Boot port showed U-Boot, then seL4 and sel4test after `bootm`.
-
-## Installer script
-
-[`scripts/install-to-boot.sh`](../scripts/install-to-boot.sh) automates the README's §3. It is **dry-run by default**. It takes the mount point of the card's FAT `boot` partition:
+and in another, load and boot the shipped image:
 
 ```bash
-BOOT=$(findmnt -nro TARGET -S LABEL=boot)
+scripts/board.py flash
 ```
 
-Then one of these modes (reference, not a sequence to paste as a whole):
+The console shows the board resetting, U-Boot, the transfer and the whole test run. `flash` ends with `PASSED: Test suite passed. 118 tests passed. 49 tests disabled.` and exit code 0. Nothing was written to the board: a power cycle boots the official Linux again.
+
+To make the board boot seL4 by itself instead, see [sd-card.md](sd-card.md). To load your own images, see [flashing.md](flashing.md).
+
+## Optional: shell alias
+
+`scripts/board.py` works from any directory. A short alias is a personal choice, not part of the repository's workflow, e.g. in your own shell startup file:
 
 ```bash
-scripts/install-to-boot.sh "$BOOT"                        # dry run: report only
-scripts/install-to-boot.sh "$BOOT" --apply                # sel4test.uImage + autoboot boot.scr
-scripts/install-to-boot.sh "$BOOT" --restore-linux --apply
-scripts/install-to-boot.sh "$BOOT" --verify               # read-only report of what is on the card
+alias board="$HOME/path/to/TALOS-seL4-Bringup/scripts/board.py"
 ```
-
-Safety rules it enforces:
-
-- Repository files must match `images/SHA256SUMS`. CRLF line endings are tolerated, and a missing or malformed entry is an error.
-- The target must be a mounted vfat partition with `boot.scr` and `fitImage`, and `boot.scr` must be a U-Boot script image.
-- `boot-linux.scr` is created once, only from a non-TALOS script, and is **never overwritten or deleted**. TALOS scripts are recognised by hash, including both scripts from the repository's first revision (`boot-sel4.scr` and the autoboot that loaded `sel4-experimental.uImage`), so a card set up earlier is handled safely. There is no option to override this; fix such a card by hand.
-- Every write goes to `<name>.talos-tmp`, then is synced, hash-checked and renamed into place. The image is written before `boot.scr`, and `boot.scr` is always replaced last. A failure or interruption at any point leaves `boot.scr` as it was. A later run removes leftover `*.talos-tmp` files.
-- `--verify` also lists images from earlier revisions (`sel4.uImage`, `sel4-experimental.uImage`) if present. They are unused and safe to delete.
-
-`scripts/test-installer.sh` re-runs the full test suite (88 checks) against disposable loop-mounted FAT images. It needs `mkfs.vfat`, `udisksctl` and the repository's git history (for the first-revision scripts), and **never touches a real card**: each target is checked to be a loop device backed by its own temp file. Results: [TEST_RESULTS](../reports/TEST_RESULTS.md#installer).
-
-The installer is Linux-only (it needs `findmnt`). On Windows, follow the README's manual steps.
-
-## Docker and build prerequisites (only for rebuilding images)
-
-Teammates who just boot seL4 **do not need this**. To rebuild:
-
-- Linux x86-64 with Docker Engine, and your user in the `docker` group (`docker run hello-world` works without `sudo`).
-- `git` and Google's `repo` launcher (`sudo apt install repo` on Ubuntu/Mint, or see the [repo docs](https://gerrit.googlesource.com/git-repo)).
-- Network access to github.com and Docker Hub, and about 12 GB of free disk for the toolchain image plus about 250 MB per build work directory.
-- Toolchain image: `trustworthysystems/camkes@sha256:77dcf9c7927c138d88434d812d8bd8b86455f9418d0895682250745b192e291e` (GCC 14.2.0, CMake 3.31.6, Ninja 1.12.1, dtc 1.7.2, mkimage 2025.01). Pull it by digest so you get exactly these tools.
-
-Build the image with [`scripts/build-sel4test.sh`](../scripts/build-sel4test.sh) ([details](BUILD_PROVENANCE.md#rebuilding)). The [Rust root task](../rust-root-task/README.md) additionally needs the `sel4-rust-tutorial` image, [loading images over USB](FLASHING.md) needs nothing more, and the optional [network boot](NETBOOT.md) needs Docker and one firewall rule.

@@ -23,7 +23,7 @@ Sockets live in $XDG_RUNTIME_DIR/serial-share/<ttyUSBn>.{sock,ctl,sock.pid}.
 (`serial_share.py serve <port>`), so it imports nothing outside the standard
 library.
 """
-import fcntl, os, select, signal, socket, struct, subprocess, sys, termios, time, tty
+import fcntl, os, select, signal, socket, struct, sys, termios, time, tty
 
 BAUD = termios.B115200
 MAX_BACKLOG = 1 << 20      # drop a client that stops reading after 1 MiB
@@ -241,9 +241,11 @@ def ensure_broker(port):
     s = connect(port)
     if s:
         return s
-    subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "serve", port],
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, start_new_session=True)
+    # Detached on purpose: its own session (no terminal signals), output to
+    # /dev/null, and nobody waits for it.
+    os.posix_spawn(sys.executable, [sys.executable, "-I", os.path.abspath(__file__), "serve", port],
+                   os.environ, setsid=True,
+                   file_actions=[(os.POSIX_SPAWN_OPEN, fd, os.devnull, os.O_RDWR, 0) for fd in (0, 1, 2)])
     for _ in range(50):
         time.sleep(0.1)
         s = connect(port)
@@ -259,7 +261,8 @@ def broker_pid(port):
         return None
     s.close()
     try:
-        return int(open(sock_path(port) + ".pid").read())
+        with open(sock_path(port) + ".pid") as f:
+            return int(f.read())
     except (OSError, ValueError):
         return None
 
