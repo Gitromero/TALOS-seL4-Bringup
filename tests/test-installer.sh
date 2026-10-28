@@ -5,9 +5,10 @@
 # (no root needed on a normal desktop session). Real SD cards are never used:
 # every target is checked to be a loop device backed by a file in our temp dir.
 #
-# Usage: scripts/test-installer.sh
+# Usage: tests/test-installer.sh
 # Requires: mkfs.vfat, udisksctl, findmnt, losetup.
 set -uo pipefail
+case "${1:-}" in -h|--help) sed -n '2,/^[^#]/{/^#/s/^# \{0,1\}//p}' "$0"; exit 0 ;; esac
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 INSTALL="$REPO/scripts/install-to-boot.sh"
