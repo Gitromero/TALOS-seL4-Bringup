@@ -11,6 +11,12 @@ Legend: ✅ passed · ❌ failed · ⏳ not performed · ➖ not applicable
 | 2026-10-21 | U-Boot network: `dhcp` lease, `ping` of the gateway and of the host, `tftpboot` of a 177,016-byte image; board CRC-32 `2dacad46` equal to the host's | ✅ |
 | 2026-10-21 | Rust root task, network-booted with `bootm 0x8e000000 - 0xbf333da0` | ✅ `Hello from Rust on seL4!`, `50 untyped regions available` |
 | 2026-10-22 | Repeated cold boots (power removed) with autoboot | ✅ Booted into sel4test each time |
+| 2026-10-25 | `scripts/network-flash.sh images/sel4test.uImage` over SSH (now `pf flash --lan`), about 5 runs, one with a shared console watching | ✅ `118 tests passed`, CRC-32 `eb98aed0` |
+| 2026-10-26 | `scripts/pf flash` (USB, `scripts/usb-flash.sh`) at 1.5 Mbaud with a shared console watching: transfer 23.6 s | ✅ `118 tests passed`, CRC-32 `eb98aed0` |
+| 2026-10-26 | `pf flash --baud 921600 --expect 'All is well in the universe'` (35.4 s) and `pf flash --no-reset --baud 115200` (268 s) | ✅ both passed |
+| 2026-10-26 | `pf flash` interrupted with Ctrl-C mid-transfer: exit 130, port back to 115200 and 16 ms latency; the next `pf flash` reset the board and passed | ✅ |
+| 2026-10-26 | `pf flash --lan` after the shared-console changes (regression check) | ✅ `118 tests passed` |
+| | `pf flash --console`, manual `loady` with picocom/`sb` or Tera Term | ⏳ not run on the board yet |
 | 2026-10-22 | Clean rebuild after zeroing the board MAC in all sources (patch `kernel/0002` folded into `kernel/0001`) | ✅ `sel4test.uImage` byte-identical (`2c986076…`); privacy audit: no non-zero MAC anywhere |
 | | Autoboot fallback to Linux | ⏳ QEMU only so far (below) |
 

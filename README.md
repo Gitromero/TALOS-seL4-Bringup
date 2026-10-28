@@ -10,7 +10,9 @@ Take a **blank microSD card** to a **verified seL4 + sel4test boot** on a Microc
 |---|---|---|
 | seL4 + sel4test, **automatic boot** from the SD card | ✅ **Hardware-verified:** `118 tests passed. 49 tests disabled.` with no typing | this page |
 | Linux host as the serial console (all three UART ports) | ✅ Verified | [docs/SETUP.md](docs/SETUP.md#serial-console-on-a-linux-host) |
-| U-Boot network boot (DHCP + TFTP from your computer, no SD card swaps) | ✅ Verified | [quick start](#network-boot-quick-start), [full guide](docs/NETBOOT.md) |
+| Load and boot images **over USB** from your computer, no SD card swaps (`pf flash`) | ✅ Verified | [quick start](#loading-images-without-the-sd-card-quick-start), [full guide](docs/FLASHING.md) |
+| The same over the network: DHCP + TFTP (`pf flash --lan`) | ✅ Verified | [quick start](#network-tftp), [full guide](docs/NETBOOT.md) |
+| Shared serial consoles: people, scripts and AI agents on the same port at once | ✅ Verified | [docs/SHARED_CONSOLE.md](docs/SHARED_CONSOLE.md) |
 | `no_std` **Rust** root task on seL4 (`Hello from Rust on seL4!`) | ✅ Verified (network boot) | [rust-root-task/](rust-root-task/README.md) |
 | Peripheral map (addresses, IRQs, clocks); user LEDs driven by register writes | ✅ LEDs verified from U-Boot | [docs/PERIPHERALS.md](docs/PERIPHERALS.md) |
 
@@ -180,7 +182,7 @@ After the summary nothing else runs: seL4 has no shell, and sel4test is the only
 
 ## Manual boot from the U-Boot prompt
 
-You need the `RISC-V #` prompt for the [Rust root task](rust-root-task/README.md), [network boot](#network-boot-quick-start), or to boot the image by hand. Press a key while U-Boot prints `Hit any key to stop autoboot`. This stops U-Boot before it runs `boot.scr`. Then paste these one line at a time:
+You need the `RISC-V #` prompt to load images [by hand over USB or the network](#loading-images-without-the-sd-card-quick-start), or to boot the image from the card by hand. Press a key while U-Boot prints `Hit any key to stop autoboot`. This stops U-Boot before it runs `boot.scr`. Then paste these one line at a time:
 
 ```text
 load mmc 0:1 0x8e000000 sel4test.uImage
@@ -195,18 +197,28 @@ bootm 0x8e000000 - ${fdtcontroladdr}
 - **Never leave out the FDT argument**: `bootm 0x8e000000` alone fails with `Device tree not found or missing FDT support` and needs a board reset.
 - If the board was reset, anything loaded into RAM is gone: `load` again before `bootm`.
 
-## Network boot (quick start)
+## Loading images without the SD card (quick start)
 
-Instead of copying images to the SD card, U-Boot can download them from your computer over Ethernet. This is the fastest way to try a freshly built image. Verified on the board with the Rust root task. Nothing is written to the SD card. You need Docker on a Linux computer, and an Ethernet cable from connector **#2** to the same network (router) as your computer. Full guide, details and troubleshooting: **[docs/NETBOOT.md](docs/NETBOOT.md)**.
+Instead of copying images to the SD card, send them from your computer into the board's RAM and boot them. This is the way to try a freshly built image. Nothing is written to the SD card, and a power cycle boots the card as before. Full guide: **[docs/FLASHING.md](docs/FLASHING.md)**.
 
-**1. On your computer**, from the repository root: stage the image and start the TFTP server.
+### USB (default)
+
+Needs only the USB-C cable in connector **#1**. From the repository root:
 
 ```bash
-cp images/sel4test.uImage tftp/root/sel4test.uImage
-tftp/serve.sh start
+scripts/pf flash                       # images/sel4test.uImage
+scripts/pf flash my.uImage --expect 'Hello from Rust on seL4!'
 ```
 
-**2. Once per computer** (Ubuntu/Mint with `ufw`): allow TFTP from your local network through the firewall.
+This resets the board through the HSS console, stops autoboot, sends the image with U-Boot's `loady` (YMODEM over the U-Boot serial port, 1.5 Mbaud), checks its CRC-32 on the board, boots it and waits for the result (exit code 0 on `Test suite passed`). The 3 MB sel4test image takes about 25 seconds to send. Verified on the board on 2026-10-26.
+
+It works over SSH, so nobody has to be at the board. To watch it at the same time, open `scripts/pf console` in another terminal instead of picocom. A plain picocom would take bytes the script needs, so the script refuses to start while one is open ([why](docs/SHARED_CONSOLE.md)). Options, speeds and the manual `loady` steps: [docs/FLASHING.md](docs/FLASHING.md#1-usb).
+
+### Network (TFTP)
+
+Faster for large images: a few seconds for sel4test. Needs Docker on a Linux computer, and an Ethernet cable from connector **#2** to the same network (router) as your computer.
+
+**Once per computer** (Ubuntu/Mint with `ufw`): allow TFTP from your local network through the firewall.
 
 ```bash
 IFACE=$(ip route show default | awk '{print $5; exit}')
@@ -215,17 +227,30 @@ echo "interface=$IFACE subnet=$SUBNET"
 sudo ufw allow in on "$IFACE" from "$SUBNET" to any port 69 proto udp comment 'sel4 tftp'
 ```
 
-**3. On the board**, stop at `RISC-V #` (press a key during `Hit any key to stop autoboot`) and paste the commands that `serve.sh start` printed, one line at a time. They have your computer's address already filled in and look like this:
+**Then**, with the board's USB-C and Ethernet connected:
 
-```text
-setenv autoload no
-dhcp
-tftpboot 0x8e000000 192.168.1.10:sel4test.uImage
-iminfo 0x8e000000
-bootm 0x8e000000 - ${fdtcontroladdr}
+```bash
+scripts/pf flash --lan                 # images/sel4test.uImage; same options as above
 ```
 
-`Loading: *T T T` means the firewall is still dropping the requests ([fix](docs/NETBOOT.md#3-allow-tftp-through-your-computers-firewall)).
+It starts the TFTP server itself and does the same reset, download, CRC check, boot and result check. `Loading: *T T T` means the firewall is still dropping the requests ([fix](docs/NETBOOT.md#3-allow-tftp-through-your-computers-firewall)). Manual `dhcp`/`tftpboot` steps and details: **[docs/NETBOOT.md](docs/NETBOOT.md)**.
+
+## Day-to-day commands (`scripts/pf`)
+
+Once the board is set up and plugged into a Linux computer (USB-C **#1**; Ethernet **#2** only for `pf flash --lan`), `scripts/pf` covers daily work. All of it works over SSH:
+
+| Command | What it does |
+|---|---|
+| `scripts/pf status` | Read-only check: USB, serial channels, port names, who has them open, HSS alive, TFTP server, last result |
+| `scripts/pf flash [image]` | [Load an image over USB](docs/FLASHING.md#1-usb) and boot it with no hands on the board (default `images/sel4test.uImage`), and report pass/fail |
+| `scripts/pf flash --lan [image]` | The same over [Ethernet + TFTP](docs/NETBOOT.md#one-command-scriptsnetwork-flashsh) |
+| `scripts/pf console` | U-Boot/Linux/seL4 console, [**shared**](docs/SHARED_CONSOLE.md): leave it open and run `pf flash` in another terminal to watch (exit `Ctrl-a Ctrl-x`) |
+| `scripts/pf hss` | HSS firmware console, shared the same way |
+| `scripts/pf reset [-y]` | Reset the board through the HSS console |
+| `scripts/pf tftp [start\|stop\|status\|logs]` | The TFTP server used by `pf flash --lan` |
+| `scripts/pf install-udev` | Once per computer (sudo): bind all four serial channels on plug-in and add `/dev/polarfire-{hss,uboot,uart3,jtag}` |
+
+Optional: `alias pf="$PWD/scripts/pf"` (run from the repository root) in your shell startup file, then just `pf flash`.
 
 ## Restore normal Linux boot
 
@@ -254,12 +279,12 @@ On Windows, copy `boot-linux.scr`, paste it, rename the copy to `boot.scr`, and 
 | Symptom | Likely cause, and what to do |
 |---|---|
 | Only one serial port on Linux | The driver bound one UART. See [SETUP.md](docs/SETUP.md#serial-console-on-a-linux-host). |
-| Output has gaps or the terminal looks frozen mid-boot | Two programs have the same port open. Close one. |
+| Output has gaps or the terminal looks frozen mid-boot | Two programs have the same port open. Close one, and use `scripts/pf console` ([shared](docs/SHARED_CONSOLE.md)). |
 | No output at all | Wrong port or settings: try all ports at 115200 8N1 and check power. |
 | Linux boots instead | `boot.scr` wasn't replaced, or the script fell back (look for a `TALOS:` line). Run `scripts/install-to-boot.sh "$BOOT" --verify`. |
 | `TALOS: sel4test.uImage not found` | The image is missing from the FAT boot partition or has a different name. |
 | `Device tree not found` | Manual boot without the FDT argument. Reset, reload, and use `bootm 0x8e000000 - ${fdtcontroladdr}`. |
-| `Wrong Image Type for bootm command` | Nothing valid at `0x8e000000`, usually because the board was reset after loading. `load` (or `tftpboot`) again. |
+| `Wrong Image Type for bootm command` | Nothing valid at `0x8e000000`, usually because the board was reset after loading. `load` (or `pf flash`) again. |
 | Different test counts | Not this image or setup. See §5. |
 | Still stuck after everything above (hangs, no boot, card not detected) | **Last resort:** with the board **still powered on**, pull the microSD card out and push it back in. Do this a few times. Then, on the **HSS** console (the `>>` prompt), type `sdcard` and then `boot`. It is not a real fix, but it has sometimes worked. |
 
@@ -309,14 +334,21 @@ README.md                    this guide
 images/                      sel4test.uImage and SHA256SUMS
 boot/                        autoboot script (boot-auto), Linux backup script (boot-linux), sources
 scripts/install-to-boot.sh   SD-card installer (dry run by default; --restore-linux, --verify)
+scripts/pf                   day-to-day board commands: status, flash, console, hss, reset, tftp, install-udev
+scripts/usb-flash.sh         one-command USB load (pf flash): reset, YMODEM, verify, boot, check result
+scripts/network-flash.sh     the same over the network (pf flash --lan): reset, TFTP, verify, boot, check result
+scripts/serial-share.py      share a serial port between consoles, scripts and AI agents
 scripts/test-installer.sh    installer tests on disposable FAT images
 scripts/build-sel4test.sh    reproducible build of images/sel4test.uImage from pinned sources
 scripts/make-source-archive.sh, privacy_audit.py   GPL source archive, artifact privacy scan
 reports/                     build report, privacy audit, test results
 rust-root-task/              no_std Rust seL4 root task: source, build script, boot steps
-tftp/                        TFTP server (Docker) for network-booting images from U-Boot
+tftp/                        TFTP server (Docker) for pf flash --lan
+host/udev/                   Linux host udev rule: bind all four serial channels, /dev/polarfire-* names
 docs/SETUP.md                host details: flashing, mounting, serial ports (Windows and Linux), Docker
-docs/NETBOOT.md              boot images over the network from U-Boot
+docs/FLASHING.md             load images into RAM and boot them: USB first, then network
+docs/NETBOOT.md              network (TFTP) details: server, firewall, manual steps
+docs/SHARED_CONSOLE.md       sharing the serial ports: people, scripts and AI agents at once
 docs/PERIPHERALS.md          board peripheral map: addresses, IRQs, clocks, ownership
 docs/TROUBLESHOOTING.md      failures and fixes
 docs/FIRMWARE_COMPATIBILITY.md  tested firmware versions and results

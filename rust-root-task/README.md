@@ -63,12 +63,13 @@ Output: `rust-root-task/build/images/rust-hello.uImage` (about 175 KiB). The fir
 
 ## Boot
 
-**Network (fastest):** from the repository root, copy the image into the TFTP folder and (re)start the server, then follow [docs/NETBOOT.md](../docs/NETBOOT.md):
+**USB (default):** from the repository root, with the board's USB-C **#1** connected ([details](../docs/FLASHING.md#1-usb)):
 
 ```bash
-cp rust-root-task/build/images/rust-hello.uImage tftp/root/rust.uImage
-tftp/serve.sh start
+scripts/pf flash rust-root-task/build/images/rust-hello.uImage --expect 'Hello from Rust on seL4!'
 ```
+
+**Network:** the same with `scripts/pf flash --lan ...`, if Ethernet **#2** is connected and the TFTP setup in [docs/NETBOOT.md](../docs/NETBOOT.md) is done.
 
 **SD card:** copy it next to `sel4test.uImage` on the card's FAT boot partition:
 
@@ -91,4 +92,4 @@ The autoboot `boot.scr` keeps booting sel4test, so the card still works as befor
 
 ## Changing the program
 
-Edit [`rust/hello/src/main.rs`](rust/hello/src/main.rs), rerun `build.sh` (incremental), copy the image to `tftp/root/`, reset the board and netboot. `sel4::debug_println!` goes through `seL4_DebugPutChar` → kernel → SBI → the U-Boot/seL4 serial port.
+Edit [`rust/hello/src/main.rs`](rust/hello/src/main.rs), rerun `build.sh` (incremental), then run the `scripts/pf flash` command above again: it resets the board and boots the new image. `sel4::debug_println!` goes through `seL4_DebugPutChar` → kernel → SBI → the U-Boot/seL4 serial port.

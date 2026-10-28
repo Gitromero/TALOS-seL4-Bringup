@@ -99,7 +99,7 @@ The board's USB-C connector **#1** goes to an on-board FTDI **FT4232H** (it iden
 
 COM and `ttyUSB` numbers are assigned per computer and can change. The interface number is fixed by the hardware, so on Linux use the stable names under `/dev/serial/by-id/`, which end in `-if01-port0`, `-if02-port0` and so on.
 
-**One program per port.** If two programs have the same port open (two terminals, or a terminal and a script), Linux hands each incoming byte to only one of them, so both see gaps and the console looks frozen or garbled. Close one.
+**One program per port.** If two programs have the same port open (two terminals, or a terminal and a script), Linux hands each incoming byte to only one of them, so both see gaps and the console looks frozen or garbled. Close one, or open every console with `scripts/pf console` (or `scripts/serial-share.py console <port>`), which shares the port between any number of consoles, the flash scripts and AI agents ([SHARED_CONSOLE.md](SHARED_CONSOLE.md)).
 
 ### Serial console on a Linux host
 
@@ -118,7 +118,28 @@ The `new_id` file is under **`/sys/bus/usb-serial/`**. `/sys/bus/usb/drivers/ftd
 
 Binding also claims interface 0, the JTAG channel, as `/dev/ttyUSB0`. That is harmless for the consoles. If FlashPro programming from this computer then fails to find the board, release it with `echo <usb-path>:1.0 | sudo tee /sys/bus/usb/drivers/ftdi_sio/unbind`, where `<usb-path>` is the board's device, e.g. `1-1` (`ls /sys/bus/usb/drivers/ftdi_sio/`). This last step has **not** been needed or tested yet.
 
-**3. Open the consoles**, one terminal each. HSS:
+### Stable port names
+
+[`host/udev/99-polarfire-discovery.rules`](../host/udev/99-polarfire-discovery.rules) does step 2 automatically every time the board is plugged in, and adds names that never change:
+
+| Name | Channel |
+|---|---|
+| `/dev/polarfire-jtag` | interface 0, JTAG |
+| `/dev/polarfire-hss` | interface 1, HSS console |
+| `/dev/polarfire-uboot` | interface 2, U-Boot / Linux / seL4 console |
+| `/dev/polarfire-uart3` | interface 3, third UART |
+
+Install once (needs your password): `scripts/pf install-udev`, which also refreshes a board that is already plugged in. By hand:
+
+```bash
+sudo cp host/udev/99-polarfire-discovery.rules /etc/udev/rules.d/
+sudo udevadm control --reload
+ls -l /dev/polarfire-*          # after unplugging and replugging the board
+```
+
+Why it matters: after the `new_id` command, `ttyUSB` numbers depend on the order the channels were bound. On the team's lab machine the U-Boot console stayed `/dev/ttyUSB0` and HSS became `/dev/ttyUSB2` until the next replug. `scripts/pf` and the flash scripts ([FLASHING.md](FLASHING.md)) use these names when they exist.
+
+**3. Open the consoles**, one terminal each (or `picocom -b 115200 /dev/polarfire-uboot` with the udev rule). HSS:
 
 ```bash
 picocom -b 115200 /dev/serial/by-id/*FlashPro5*-if01-port0
@@ -172,4 +193,4 @@ Teammates who just boot seL4 **do not need this**. To rebuild:
 - Network access to github.com and Docker Hub, and about 12 GB of free disk for the toolchain image plus about 250 MB per build work directory.
 - Toolchain image: `trustworthysystems/camkes@sha256:77dcf9c7927c138d88434d812d8bd8b86455f9418d0895682250745b192e291e` (GCC 14.2.0, CMake 3.31.6, Ninja 1.12.1, dtc 1.7.2, mkimage 2025.01). Pull it by digest so you get exactly these tools.
 
-Build the image with [`scripts/build-sel4test.sh`](../scripts/build-sel4test.sh) ([details](BUILD_PROVENANCE.md#rebuilding)). The [Rust root task](../rust-root-task/README.md) additionally needs the `sel4-rust-tutorial` image, and [network boot](NETBOOT.md) needs Docker and one firewall rule.
+Build the image with [`scripts/build-sel4test.sh`](../scripts/build-sel4test.sh) ([details](BUILD_PROVENANCE.md#rebuilding)). The [Rust root task](../rust-root-task/README.md) additionally needs the `sel4-rust-tutorial` image, [loading images over USB](FLASHING.md) needs nothing more, and the optional [network boot](NETBOOT.md) needs Docker and one firewall rule.

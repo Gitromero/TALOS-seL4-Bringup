@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+#
+# Day-to-day commands for a PolarFire SoC Discovery Kit attached to this Linux
+# host by USB-C #1 (serial, and the default way to load images) and, optionally
+# for network boot, Ethernet #2. Everything works over SSH: nobody needs to be at
+# the board except to power-cycle it or swap the SD card.
+#
+# Usage:
+#   scripts/pf status                 read-only report: USB, bound channels, ports, HSS, TFTP, last run
+#   scripts/pf flash [image] [opts]   load an image over USB and boot it, hands-off
+#                                     (default images/sel4test.uImage); options: scripts/usb-flash.sh --help
+#   scripts/pf flash --lan [image] [opts]   the same over Ethernet + TFTP; options: scripts/network-flash.sh --help
+#   scripts/pf console                shared U-Boot/Linux/seL4 console (exit: Ctrl-a Ctrl-x)
+#   scripts/pf hss                    shared HSS firmware console
+#   scripts/pf reset [-y]             reset the board through the HSS console
+#   scripts/pf tftp [start|stop|status|logs]   the TFTP server flash --lan uses
+#   scripts/pf install-udev           install the udev rule (sudo): all 4 channels + /dev/polarfire-*
+#
+# Consoles are shared (scripts/serial-share.py): keep `pf console` open in one
+# terminal and run `pf flash` in another to watch the whole boot. Don't use a
+# plain picocom on the board's ports; it takes bytes the other tools need.
+#
+# Ports, in order: $UBOOT_PORT / $HSS_PORT, /dev/polarfire-uboot / -hss (udev rule),
+# /dev/serial/by-id/*FlashPro5*-if02-port0 / -if01-port0.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+SHARE="$REPO/scripts/serial-share.py"
+RULE="$REPO/host/udev/99-polarfire-discovery.rules"
+
+if [ -t 1 ]; then G=$'\e[32m' Y=$'\e[33m' R=$'\e[31m' B=$'\e[1;36m' N=$'\e[0m'; else G='' Y='' R='' B='' N=''; fi
+hdr()  { printf '%s== %s ==%s\n' "$B" "$*" "$N"; }
+ok()   { printf '%s[ok]%s %s\n' "$G" "$N" "$*"; }
+warn() { printf '%s[!!]%s %s\n' "$Y" "$N" "$*"; }
+die()  { printf '%s[xx]%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
+
+usage() {
+    sed -n '/^# Usage:/,/^# Ports/p' "$0" | sed '$d; s/^# \{0,1\}//' >&2
+    exit 2
+}
+
+# port <uboot|hss|uart3|jtag>: device path, or empty.
+port() {
+    local iface override p
+    case "$1" in
+        jtag) iface=00 ;; hss) iface=01; override="${HSS_PORT:-}" ;;
+        uboot) iface=02; override="${UBOOT_PORT:-}" ;; uart3) iface=03 ;;
+    esac
+    [ -n "${override:-}" ] && { echo "$override"; return; }
+    [ -e "/dev/polarfire-$1" ] && { echo "/dev/polarfire-$1"; return; }
+    for p in /dev/serial/by-id/*FlashPro5*-if"$iface"-port0; do
+        [ -e "$p" ] && { echo "$p"; return; }
+    done
+}
+need_port() {
+    local p; p="$(port "$1")"
+    [ -n "$p" ] || die "PolarFire $1 port not found (USB-C #1 unplugged, or channels not bound: scripts/pf status)"
+    echo "$p"
+}
+
+broker_pid() { python3 -I "$SHARE" sock "$1" | awk '{print $2}'; }
+
+# users <dev>: "pid(comm) ..." holding the port, not counting the sharing broker.
+users() {
+    local real fd pid broker
+    real="$(readlink -f "$1")"
+    broker="$(broker_pid "$1")"
+    for fd in /proc/[0-9]*/fd/*; do
+        [ "$(readlink "$fd" 2>/dev/null)" = "$real" ] || continue
+        pid="${fd#/proc/}"; pid="${pid%%/*}"
+        [ "$pid" = "$broker" ] && continue
+        printf '%s(%s) ' "$pid" "$(cat "/proc/$pid/comm" 2>/dev/null)"
+    done | tr ' ' '\n' | sort -u | tr '\n' ' '
+}
+
+shared_console() {
+    local p u
+    p="$(need_port "$1")"
+    u="$(users "$p")"
+    [ -z "$u" ] || die "$p is held by a program that doesn't share it: $u (close it first)"
+    exec python3 -I "$SHARE" console "$p"
+}
+
+cmd_status() {
+    local dev bound i n drv tty p u shared reply last st
+    hdr "USB"
+    dev="$(grep -l '^1514$' /sys/bus/usb/devices/*/idVendor 2>/dev/null | head -1 || true)"
+    if [ -z "$dev" ]; then
+        warn "Discovery Kit not on USB (cable in USB-C #1? board powered?)"
+    else
+        dev="$(dirname "$dev")"
+        ok "$(cat "$dev/manufacturer" "$dev/product" 2>/dev/null | tr '\n' ' ')at USB $(basename "$dev")"
+        bound=0
+        for i in "$dev":1.*; do
+            n="$(cat "$i/bInterfaceNumber")"
+            drv="$(basename "$(readlink "$i/driver" 2>/dev/null)" 2>/dev/null || true)"
+            tty="$(cd "$i" && ls -d ttyUSB* 2>/dev/null | head -1 || true)"
+            [ "$drv" = ftdi_sio ] && bound=$((bound + 1))
+            printf '  interface %s  %-9s %s\n' "$n" "${drv:-unbound}" "$tty"
+        done
+        if [ "$bound" -eq 4 ]; then ok "all 4 channels bound"
+        else warn "$bound/4 channels bound: scripts/pf install-udev (or docs/SETUP.md#serial-console-on-a-linux-host)"; fi
+    fi
+
+    hdr "Serial ports"
+    if [ -e /etc/udev/rules.d/99-polarfire-discovery.rules ]; then ok "udev rule installed"
+    else warn "udev rule not installed (optional): scripts/pf install-udev"; fi
+    for n in hss uboot uart3 jtag; do
+        p="$(port "$n")"
+        [ -n "$p" ] || { printf '  %-6s missing\n' "$n"; continue; }
+        u="$(users "$p")"
+        shared=""; [ -n "$(broker_pid "$p")" ] && shared="  ${G}shared console open${N}"
+        printf '  %-6s %s -> %s%s%s\n' "$n" "$p" "$(readlink -f "$p")" "$shared" \
+            "${u:+  ${Y}held by: $u(blocks pf flash)${N}}"
+    done
+
+    hdr "HSS"
+    p="$(port hss)"
+    if [ -z "$p" ]; then
+        warn "port missing"
+    elif [ -n "$(broker_pid "$p")" ]; then
+        ok "a shared HSS console is open; skipped the probe"
+    elif [ -n "$(users "$p")" ]; then
+        warn "skipped: port held by another program"
+    else
+        reply="$(python3 -I - "$p" <<'PY'
+import os, select, sys, termios, time
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+a = termios.tcgetattr(fd); a[0] = a[1] = a[3] = 0
+a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL; a[4] = a[5] = termios.B115200
+termios.tcsetattr(fd, termios.TCSANOW, a); termios.tcflush(fd, termios.TCIFLUSH)
+os.write(fd, b"\r"); out, end = b"", time.time() + 2
+while time.time() < end:
+    if select.select([fd], [], [], 0.2)[0]:
+        out += os.read(fd, 4096)
+sys.stdout.write(out.replace(b"\0", b"").decode(errors="replace"))
+PY
+)"
+        if grep -q '>>' <<<"$reply"; then ok "HSS answers Enter with '>>': remote reset works"
+        else warn "HSS did not answer Enter (board off, or HSS busy)"; fi
+    fi
+
+    hdr "Network boot (pf flash --lan)"
+    st="$("$REPO/tftp/serve.sh" status 2>/dev/null || true)"
+    if [ -n "$st" ]; then ok "TFTP server: $st"; else echo "  TFTP server: stopped (pf flash --lan starts it)"; fi
+    echo "  staged in tftp/root/: $(cd "$REPO/tftp/root" && ls 2>/dev/null | tr '\n' ' ')"
+
+    hdr "Last flash"
+    last="$(ls -t "$REPO"/logs/usb-flash-*.log "$REPO"/logs/network-flash-*.log 2>/dev/null | head -1 || true)"
+    if [ -z "$last" ]; then
+        echo "  none yet"
+    else
+        echo "  last run: logs/$(basename "$last"): $(grep -a -o -m1 -E 'Test suite (passed|failed)[^\r]*' "$last" || echo 'no sel4test result line')"
+    fi
+}
+
+cmd_flash() {
+    local a script=usb-flash.sh args=()
+    for a in "$@"; do   # --lan may come anywhere
+        if [ "$a" = --lan ]; then script=network-flash.sh; else args+=("$a"); fi
+    done
+    set -- "${args[@]}"
+    [ "${1:-}" = -- ] && shift
+    if [ $# -eq 0 ] || { [[ "$1" == -* ]] && [ "$1" != --help ] && [ "$1" != -h ]; }; then
+        set -- "$REPO/images/sel4test.uImage" "$@"
+    fi
+    exec "$REPO/scripts/$script" "$@"
+}
+
+cmd_reset() {
+    local p u ans
+    p="$(need_port hss)"
+    u="$(users "$p")"
+    [ -z "$u" ] || die "$p is held by a program that doesn't share it: $u (send RESET there, or close it)"
+    if [ "${1:-}" != -y ]; then
+        read -r -p "Reset the PolarFire board? Whatever runs on it is lost. [y/N] " ans
+        [[ "$ans" =~ ^[Yy]$ ]] || exit 1
+    fi
+    python3 -I "$SHARE" send "$p" '\rRESET\r'   # through a shared HSS console if one is open
+    ok "RESET sent to HSS on $p (watch it boot: scripts/pf console)"
+}
+
+cmd_install_udev() {
+    local dev t
+    [ -f "$RULE" ] || die "missing $RULE"
+    echo "Installing $RULE to /etc/udev/rules.d/ (asks for your password)."
+    sudo install -m 0644 "$RULE" /etc/udev/rules.d/99-polarfire-discovery.rules
+    sudo udevadm control --reload
+    dev="$(grep -l '^1514$' /sys/bus/usb/devices/*/idVendor 2>/dev/null | head -1 || true)"
+    if [ -n "$dev" ]; then
+        dev="$(dirname "$dev")"
+        sudo udevadm trigger --action=add "$dev"; sudo udevadm settle
+        for t in "$dev"/*:1.*/ttyUSB*; do
+            [ -e "$t" ] && sudo udevadm trigger --action=add "/sys/class/tty/$(basename "$t")"
+        done
+        sudo udevadm settle
+        ls -l /dev/polarfire-* 2>/dev/null || warn "no /dev/polarfire-* yet: unplug and replug the board"
+    else
+        echo "Board not plugged in: the names appear when you plug it in."
+    fi
+}
+
+case "${1:-}" in
+    status) shift; cmd_status "$@" ;;
+    flash) shift; cmd_flash "$@" ;;
+    console) shared_console uboot ;;
+    hss) shared_console hss ;;
+    reset) shift; cmd_reset "$@" ;;
+    tftp) shift; exec "$REPO/tftp/serve.sh" "${1:-status}" ;;
+    install-udev) cmd_install_udev ;;
+    *) usage ;;
+esac

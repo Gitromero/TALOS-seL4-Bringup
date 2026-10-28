@@ -1,6 +1,35 @@
 # Network boot from U-Boot (TFTP)
 
-Boot a freshly built image straight from your computer, with no SD card swaps. U-Boot gets an IP address by DHCP, downloads the image over TFTP into RAM, and boots it with the same `bootm` command as the manual SD boot. **Verified on the Discovery Kit on 2026-10-21** with the [Rust root task](../rust-root-task/README.md). Nothing is written to the SD card or to U-Boot's saved environment.
+> **USB is the default way to load images** (`scripts/pf flash`, USB-C cable only): see [FLASHING.md](FLASHING.md). This page is the network alternative, `scripts/pf flash --lan`: faster for large images, but it needs Ethernet, Docker and a firewall rule.
+
+Boot a freshly built image straight from your computer over Ethernet. U-Boot gets an IP address by DHCP, downloads the image over TFTP into RAM, and boots it with the same `bootm` command as the manual SD boot. **Verified on the Discovery Kit on 2026-10-21** with the [Rust root task](../rust-root-task/README.md). Nothing is written to the SD card or to U-Boot's saved environment.
+
+## One command: `scripts/network-flash.sh`
+
+Steps 1–4 below, plus the board reset, done by a script (`scripts/pf flash --lan` runs it too, defaulting to `images/sel4test.uImage`). Run it from the repository root on the computer the board's USB-C **#1** is plugged into (over SSH is fine):
+
+```bash
+scripts/network-flash.sh images/sel4test.uImage
+scripts/network-flash.sh rust-root-task/build/images/rust-hello.uImage --expect 'Hello from Rust on seL4!'
+scripts/network-flash.sh my.uImage --console      # boot, then stay attached to the seL4 console
+```
+
+What it does, stopping with a clear message at the first problem:
+
+1. Checks the file is a uImage or FIT, and that a legacy uImage's load address doesn't overlap the `0x8e000000` staging address.
+2. Copies it into `tftp/root/`, starts the TFTP server if it isn't running, and fetches the first block from the server itself, so a broken server is caught before the board is touched.
+3. Talks to the serial ports through the [shared console](SHARED_CONSOLE.md). Refuses to start if a program that doesn't share, such as a plain `picocom`, has a port open, since it would take the output the script waits for.
+4. Sends `RESET` to the HSS console, waits for `Hit any key to stop autoboot` on the U-Boot console and stops it. With `--no-reset`, it uses the `RISC-V #` prompt if it is already there, or waits for you to reset the board.
+5. Runs `setenv autoload no`, `dhcp` (3 tries), `tftpboot` (2 tries, checking the byte count), `crc32` (compared with the file's CRC-32), `iminfo` and `bootm`, typing slowly enough that U-Boot keeps every character.
+6. Watches the console. For an image that contains sel4test, success is the `Test suite passed` line. Otherwise give `--expect REGEX`, or it finishes after `--idle` seconds (20) with no output. `Test suite failed`, `Kernel panic` and `--fail REGEX` count as failures.
+
+Everything is shown live and saved to `logs/network-flash-<time>.log` (git-ignored). Exit codes: `0` passed or booted, `1` the image reported a failure, `2` host setup problem, `3` board or U-Boot problem (no prompt, no DHCP lease, TFTP or checksum failure), `4` timed out. `scripts/network-flash.sh --help` lists every option.
+
+### Watching while it flashes
+
+Open `scripts/pf console` in another terminal (or SSH session) before or during the flash. It shows the reset, U-Boot, every command the script types and the whole test run, and stays open afterwards. **Don't type in it while the script is driving U-Boot.** How the sharing works, and how scripts and AI agents use it: [SHARED_CONSOLE.md](SHARED_CONSOLE.md).
+
+Like the manual steps, it only uses RAM: no `saveenv`, nothing written to the SD card. Serial ports are found as `/dev/polarfire-uboot` and `/dev/polarfire-hss` ([udev rule](SETUP.md#stable-port-names)), then under `/dev/serial/by-id/`; `UBOOT_PORT` and `HSS_PORT` override both. **Verified on the Discovery Kit on 2026-10-25:** `PASSED: Test suite passed. 118 tests passed. 49 tests disabled.` from a single command, over SSH.
 
 ## What the board's U-Boot supports
 
@@ -94,7 +123,7 @@ Hello from Rust on seL4!
 
 ## Driving the console from a script
 
-Anything that reads the U-Boot serial port competes with your terminal for its output: Linux gives each incoming byte to only one reader. If a script sends commands while `picocom` is open, either have the script only **write** to the port and watch the output in `picocom`, or close `picocom` first.
+Go through the shared console instead of opening the port directly, so a person can watch and nothing steals the output: [SHARED_CONSOLE.md](SHARED_CONSOLE.md#for-scripts-and-ai-agents).
 
 ## Troubleshooting
 

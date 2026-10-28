@@ -58,7 +58,7 @@ There is no keypress escape once the script runs. To get back to Linux, use a ho
 
 ## Getting to the `RISC-V #` prompt
 
-Needed for manual boot, [network boot](NETBOOT.md) and the [Rust root task](../rust-root-task/README.md). Press a key while U-Boot shows `Hit any key to stop autoboot` (the board's `bootdelay` is 2 seconds). On the board, from `picocom` on Linux, this stopped U-Boot at `RISC-V #` before `boot.scr` ran. During the original bring-up on Windows, interrupting the countdown was not reliable, which is why the first scripts only staged the image.
+Needed for manual boot, and for loading images by hand [over USB](FLASHING.md#by-hand) or [the network](NETBOOT.md). (`scripts/pf flash` gets there by itself.) Press a key while U-Boot shows `Hit any key to stop autoboot` (the board's `bootdelay` is 2 seconds). On the board, from `picocom` on Linux, this stopped U-Boot at `RISC-V #` before `boot.scr` ran. During the original bring-up on Windows, interrupting the countdown was not reliable, which is why the first scripts only staged the image.
 
 - Check you're on the **U-Boot** port, not the HSS port.
 - If HSS doesn't hand over to U-Boot, typing `sdcard` then `boot` on the **HSS** console worked during the original bring-up.
@@ -103,7 +103,7 @@ fdt header
 | You see | Meaning and fix |
 |---|---|
 | `Device tree not found or missing FDT support` then `### ERROR ### Please RESET the board ###` | Seen on the board: `bootm 0x8e000000` without the FDT argument. seL4 did not run. Reset, `load` again, and use `bootm 0x8e000000 - ${fdtcontroladdr}`. Mind the `-` in the middle. |
-| `Wrong Image Type for bootm command` / `ERROR -91: can't get kernel image!` | Seen on the board: the board had been reset after the image was loaded, so RAM no longer held it. `load` (or `tftpboot`) again. |
+| `Wrong Image Type for bootm command` / `ERROR -91: can't get kernel image!` | Seen on the board: the board had been reset after the image was loaded, so RAM no longer held it. `load` (or `pf flash`) again. |
 | `Failed to reserve memory for fdt at …` / `FDT creation failed! hanging...` | U-Boot was told to use the FDT in place (`fdt_high` all ones) and refused. Reproduced under QEMU with U-Boot 2025.10, not seen on the board. Reset, then `setenv fdt_high` before `bootm` (session only). |
 
 ## seL4 starts but output stops or tests fail
@@ -120,9 +120,11 @@ What we verified is listed in [FIRMWARE_COMPATIBILITY.md](FIRMWARE_COMPATIBILITY
 - Memory layout matters. The image runs at `0x80640000` and assumes seL4 can use `0x80000000–0x84000000` and `0x8a000000–0x92000000`, with the first 2 MiB reserved for firmware. A firmware release that reserves different memory, or a different `scriptaddr`, could break things.
 - If the latest release fails, try the tested Linux4Microchip **2026.04.1** Discovery Kit image and the matching reference design from the official release pages, **following the official flashing instructions**. Exact tag names were not verified for this document. Don't flash unofficial firmware.
 
-## Network boot
+## Loading images (`pf flash`)
 
-TFTP timeouts, firewall rules and server errors: [NETBOOT.md](NETBOOT.md#troubleshooting).
+- USB transfer failures, `loady` messages, a console stuck at the wrong speed: [FLASHING.md](FLASHING.md#troubleshooting).
+- Network (`pf flash --lan`): TFTP timeouts, firewall rules and server errors: [NETBOOT.md](NETBOOT.md#troubleshooting).
+- A console with gaps, or `is open in another program`: [SHARED_CONSOLE.md](SHARED_CONSOLE.md#troubleshooting).
 
 ## Restore Linux boot
 

@@ -1,0 +1,29 @@
+# PolarFire SoC Discovery Kit: on-board FT4232H ("Microsemi Embedded FlashPro5", 1514:2008).
+#
+# 1. Bind all four channels. Out of the box ftdi_sio binds only interface 2, so a
+#    single /dev/ttyUSB0 appears (and it is the U-Boot console, not the first port).
+# 2. Stable names that don't depend on ttyUSB numbering:
+#      /dev/polarfire-jtag   interface 0  JTAG (FlashPro programming; not a console)
+#      /dev/polarfire-hss    interface 1  HSS firmware console (">>")
+#      /dev/polarfire-uboot  interface 2  U-Boot / Linux / seL4 console
+#      /dev/polarfire-uart3  interface 3  third UART (silent in the bring-up)
+#
+# Install (docs/SETUP.md#stable-port-names): scripts/pf install-udev, or by hand:
+#   sudo cp host/udev/99-polarfire-discovery.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usb --subsystem-match=tty
+# With several kits attached, the names point at the last one plugged in; use
+# /dev/serial/by-id/ (contains the board's serial number) to tell them apart.
+
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1514", ATTR{idProduct}=="2008", \
+  RUN+="/bin/sh -c 'modprobe ftdi_sio; echo 1514 2008 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id 2>/dev/null || true'"
+
+SUBSYSTEM!="tty", GOTO="polarfire_end"
+KERNEL!="ttyUSB*", GOTO="polarfire_end"
+SUBSYSTEMS=="usb", IMPORT{builtin}="usb_id"
+ENV{ID_VENDOR_ID}!="1514", GOTO="polarfire_end"
+ENV{ID_MODEL_ID}!="2008", GOTO="polarfire_end"
+ENV{ID_USB_INTERFACE_NUM}=="00", SYMLINK+="polarfire-jtag"
+ENV{ID_USB_INTERFACE_NUM}=="01", SYMLINK+="polarfire-hss"
+ENV{ID_USB_INTERFACE_NUM}=="02", SYMLINK+="polarfire-uboot"
+ENV{ID_USB_INTERFACE_NUM}=="03", SYMLINK+="polarfire-uart3"
+LABEL="polarfire_end"

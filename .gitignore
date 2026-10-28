@@ -20,3 +20,5 @@ rust-root-task/build/
 rust-root-task/rust/target/
 tftp/root/*
 !tftp/root/.gitkeep
+# Console logs written by scripts/usb-flash.sh and scripts/network-flash.sh.
+logs/

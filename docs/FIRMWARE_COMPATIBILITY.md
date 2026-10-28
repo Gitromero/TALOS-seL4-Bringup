@@ -28,6 +28,7 @@ Observed on the same board on 2026-10-21 (U-Boot console):
 |---|---|
 | Firmware banner before U-Boot | `OpenSBI v1.2` (runtime SBI version 2.0, `Platform Name: Microchip PolarFire(R) SoC`, `Domain1 Name: u-boot.bin`, boot hart 1) |
 | U-Boot | `2025.07-linux4microchip-2026.04 (Apr 29 2026 - 08:52:30 +0000)`, `Model: Microchip PolarFire-SoC Discovery Kit`, `DRAM: 1 GiB (total 1.8 GiB)` |
+| U-Boot serial loading | `loady` / `loadx` / `loadb` available; `loady` works up to 1.5 Mbaud (3 Mbaud fails). No `usb`, `ums`, `dfu` or `fastboot`, and the SoC's USB OTG is disabled in the device tree ([FLASHING.md](FLASHING.md)) |
 | U-Boot network | `eth0: ethernet@20110000`, gigabit link, `dhcp` / `ping` / `tftpboot` available, no `wget` ([NETBOOT.md](NETBOOT.md)) |
 | `bdinfo` | `fdt_blob = 0xbf333da0`, `relocaddr = 0xbfb3b000`, boot hart 1 |
 

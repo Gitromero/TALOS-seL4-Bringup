@@ -133,3 +133,45 @@ Checked read-only against the developer workstation and the working seL4 SD card
 - **Board MAC:** zeroed in `board/discovery/discovery.dts/.dtb` and `patches/kernel/0001` (the separate `0002` patch was folded in). A clean rebuild is still byte-identical (`2c986076…`). The original MAC remains in git history, so publish from a fresh history. This resolves the "Publication cautions" item above.
 - **Board checks:** repeated cold boots confirmed. User LEDs driven from U-Boot by GPIO register writes; peripheral map in `docs/PERIPHERALS.md`.
 - **Still open on the board:** autoboot fallback to Linux, the renamed autoboot script, the pinned-checkout Rust image.
+
+### Update 2026-10-25: hands-off workflow (supersedes the above where they differ)
+
+- **Linux serial, corrected:** after the `new_id` fix, `ttyUSB` numbers follow the order the channels were bound, not the interface order. On one host the U-Boot console stayed `ttyUSB0` and HSS became `ttyUSB2` until a replug. Never rely on `ttyUSB` numbers. Use `/dev/serial/by-id/*FlashPro5*-ifNN-port0` or the names from `host/udev/99-polarfire-discovery.rules`: `/dev/polarfire-hss` (if01), `-uboot` (if02), `-uart3` (if03), `-jtag` (if00). The rule also does the `new_id` binding on every plug-in. Install with `scripts/pf install-udev`.
+- **Remote reset:** the HSS console stays live after boot and has a `RESET` command (`help` lists `YMODEM BOOT RESET HELP VERSION UPTIME DEBUG MEMTEST QSPI EMMC MMC SDCARD PAYLOAD SPI RESUME ECC`). Sending `RESET` reboots the board into HSS → U-Boot. This is what makes network boot fully remote: only power-cycling and SD card swaps need someone at the board.
+- **New tools** (all in the repo, no host-specific setup beyond Docker and `dialout`):
+  - `scripts/network-flash.sh <image>`: checks the image header and load-address overlap, stages it in `tftp/root/`, starts the TFTP server and test-fetches block 1, sends HSS `RESET`, stops autoboot, then runs `setenv autoload no` / `dhcp` (3 tries) / `tftpboot` (2 tries, byte count checked) / `crc32` (compared with the host's CRC-32) / `iminfo` / `bootm 0x8e000000 - ${fdtcontroladdr}`. It watches for `Test suite passed` (auto-detected for sel4test images), `--expect REGEX`, or `--idle` silence. Exit 0 pass, 1 image failure, 2 host problem, 3 board/U-Boot problem, 4 timeout. Logs go to `logs/` (git-ignored). RAM only: no `saveenv`, the SD card is never written.
+  - `scripts/serial-share.py`: a broker that owns a serial port and copies its output to every client (a Unix socket under `$XDG_RUNTIME_DIR/serial-share/`), so a console and `network-flash.sh` can watch the same port. It starts on demand, exits about 3 s after the last client leaves, and records its PID next to the socket so tools can tell it apart from programs that don't share. `network-flash.sh` always goes through it and refuses to start if anything else (e.g. plain `picocom`) holds a port.
+  - `scripts/pf`: one front end for teammates: `status`, `flash [image]`, `console`, `hss`, `reset [-y]`, `tftp`, `install-udev`.
+- **Verified on the board (2026-10-25, the team's kit, Linux4Microchip 2026.04.1 firmware as recorded above):**
+  - `network-flash.sh images/sel4test.uImage`, run over SSH with nobody at the board: `PASSED: Test suite passed. 118 tests passed. 49 tests disabled.`, CRC32 `eb98aed0` matched. Repeated about 5 times, all passed.
+  - The same with a shared console open during the flash: the console saw the identical run (all test lines) and stayed open.
+  - HSS `RESET` sent through the share broker while an HSS console was open: the reset and the HSS boot were visible in that console.
+  - A non-sharing program holding the U-Boot port makes `network-flash.sh` refuse immediately (exit 2).
+  - The udev rule on Debian 13 (kernel 6.12): all four channels bound, the `/dev/polarfire-*` names correct.
+- **Not yet run on the board:** `scripts/pf` itself. It was written after the board left. It calls the same `network-flash.sh` and `serial-share.py` that were verified, and only `pf status` was run (with the board attached). Also untested: `network-flash.sh --console`, `--no-reset`, `--expect` on a non-sel4test image (e.g. the Rust root task), and `--idle` mode. Try these first when the board is back.
+- **Network boot environment notes:** the board got a DHCP lease from an ordinary home/lab router in about 20 ms. A 3 MB image transfers in a few seconds over wired Ethernet. The TFTP server binds to the host's default-route interface (`IFACE=` overrides it).
+- **Next:** run the untested `pf` paths above. Then use `scripts/pf flash <image> --expect '<banner>'` as the inner loop for root-task work, e.g. `--expect 'Hello from Rust on seL4!'` for `rust-root-task/`.
+
+### Update 2026-10-26: loading images into RAM over USB (serial YMODEM)
+
+- **What "USB" means on this kit:** the only USB link is USB-C #1 → FT4232H. The SoC's USB OTG (MUSB, `0x2020_1000`) is `status = "disabled"` in the device tree, and the board's U-Boot (2025.07-linux4microchip-2026.04) has **no** `usb`, `ums`, `dfu` or `fastboot` commands. U-Boot does have `loadx`, `loady` and `loadb`. HSS has a `YMODEM` command, but it is for writing eMMC/QSPI: don't use it (FPGA/HSS rule).
+- **Verified on the board (2026-10-26, RAM only, nothing written):** `loady 0x8e000000 <baud>` on the U-Boot console, with a host YMODEM sender (1K blocks, CRC-16), then `crc32 0x8e000000 ${filesize}` (`loady` sets `filesize` but **not** `fileaddr`), `iminfo`, `bootm 0x8e000000 - ${fdtcontroladdr}`. `images/sel4test.uImage` (3,021,688 bytes): CRC32 `eb98aed0` matched every time, 0 retries, and booted to `118 tests passed. 49 tests disabled.`
+
+  | Baud | FTDI latency timer | Transfer time |
+  |---|---|---|
+  | 921600 | 16 ms (default) | 47.2 s |
+  | 1500000 | 16 ms (default) | 47.2 s |
+  | 921600 | 1 ms | 35.4 s |
+  | 1500000 | 1 ms | 23.6 s (also booted) |
+  | 3000000 | 1 ms | fails: no `C` from the receiver |
+
+- **Findings:** with the default 16 ms latency timer, YMODEM is limited by ACK round trips (16.0 ms × 2951 blocks), whatever the baud rate. A regular user can set `ASYNC_LOW_LATENCY` with `TIOCSSERIAL` (ftdi_sio then uses a 1 ms timer until replug), no root needed. The UART clock is 150 MHz, so U-Boot's 16550 divisor gives 937500 for 921600 and 1562500 for 1500000. Both work.
+- **Tools now in the repo (same day):** `scripts/usb-flash.sh` (YMODEM via `loady`, default 1.5 Mbaud, 1 ms latency during the transfer, one retry, same options/exit codes/log style as `network-flash.sh` plus `--baud`). **`scripts/pf flash` is now USB; `pf flash --lan` is the old network boot.** `scripts/serial-share.py` gained a control socket (`<tty>.ctl`: `baud N`, `lowlat 0|1`, one holder, settings restored when it disconnects) and a queued port writer (it used to drop bytes on a partial non-blocking write). Docs: new `docs/FLASHING.md` (USB first, then network) and `docs/SHARED_CONSOLE.md` (people, scripts and agents on one port); README, NETBOOT, SETUP, TROUBLESHOOTING, rust-root-task, CLAUDE.md now treat USB as the default.
+- **Verified on the board (2026-10-26) with those tools:** `pf flash` with a second shared client watching (23.6 s transfer, 118 passed; the watcher saw everything); `--baud 921600 --expect 'All is well in the universe'`; `--no-reset --baud 115200` (268 s); Ctrl-C mid-transfer (exit 130, port back to 115200/16 ms, next `pf flash` passed); `pf flash --lan` regression after the broker change (passed).
+- **Not run on the board yet:** `pf flash --console`, the manual picocom/`sb` and Tera Term YMODEM steps in `docs/FLASHING.md`. TFTP is still faster (a few seconds) when Ethernet is available.
+
+### Update 2026-10-27: Anduril-TALOS LED image over USB
+
+- **Built:** Anduril-TALOS `nix build .#c-led-image-mpfs-disco-kit` (at `beddb8b`). On a Linux host the Nix sandbox has no `/usr/bin/env`, so the kernel's `cpp_gen.sh` failed; adding `patchShebangs source` after the staged sources in Anduril-TALOS `nix/c-system.nix` fixed it (not committed there yet). `image.elf` (SHA-256 `a938addc…`, load/entry `0x80520000`) was wrapped with the kernel tree's `make-uimage`, as for sel4test: 1,723,720 bytes, SHA-256 `e86f369f…`.
+- **Verified on the board (2026-10-27, RAM only):** `scripts/pf flash <talos-led.uImage> --expect 'TALOS_LED partition=\d+ led=3'`: CRC32 `88fc1a4e` matched, elfloader on hart 1 used the DTB bundled in its CPIO, CapDL loader done, `TALOS_CLOCK ready`, partitions 1–3 `pm ready`, clock IRQs and `TALOS_LED` lines for LED1/2/3. So the TALOS image boots through U-Boot `bootm` too, not only as an HSS payload as Anduril-TALOS `docs/hardware.md` describes.
+- **Not checked:** the physical LEDs (nobody at the board) and the 250/500/750 ms periods over a longer run. Console lines from different partitions can interleave mid-line.
